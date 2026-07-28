@@ -109,3 +109,10 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+
+task runScenarioTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the 50 Minecraft scenario AI Companion test and generates report'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.CompanionScenarioTester'
+}
