@@ -18,8 +18,8 @@ public class CompanionMoodEngine {
 
 	private static final int MAX_MEMORY_SIZE = 5;
 
-	private static final AtomicReference<CompanionMoodState> currentMood =
-			new AtomicReference<>(CompanionMoodState.EXCITED);
+	private static final AtomicReference<CompanionMoodVector> currentVector =
+			new AtomicReference<>(CompanionMoodVector.defaultHappy());
 
 	private static final Deque<String> emotionalMemory = new ArrayDeque<>();
 
@@ -30,19 +30,27 @@ public class CompanionMoodEngine {
 	// --- Public API ---
 
 	public static CompanionMoodState getCurrentMood() {
-		return currentMood.get();
+		return CompanionMoodState.fromVector(currentVector.get());
+	}
+
+	public static CompanionMoodVector getCurrentVector() {
+		return currentVector.get();
 	}
 
 	/**
-	 * Updates the companion's mood and records the event in emotional memory.
+	 * Updates the companion's mood via continuous Valence-Arousal exponential smoothing
+	 * and records the event in emotional memory.
 	 */
 	public static void processTrigger(MoodTrigger trigger) {
 		processTrigger(trigger, null);
 	}
 
 	public static void processTrigger(MoodTrigger trigger, ServerPlayer debugPlayer) {
-		CompanionMoodState newMood = resolveMood(trigger);
-		CompanionMoodState oldMood = currentMood.getAndSet(newMood);
+		CompanionMoodState oldMood = getCurrentMood();
+		CompanionMoodVector targetVec = resolveVector(trigger);
+		CompanionMoodVector newVec = currentVector.updateAndGet(curr -> curr.smoothToward(targetVec, 0.4));
+		CompanionMoodState newMood = CompanionMoodState.fromVector(newVec);
+
 		recordMemoryEvent(trigger.getMemoryDescription());
 		if (debugPlayer != null && oldMood != newMood) {
 			CompanionDebugLogger.logMoodChange(debugPlayer, trigger, newMood);
@@ -61,26 +69,31 @@ public class CompanionMoodEngine {
 	 */
 	public static void processPlayerSpeech(String speech) {
 		String lower = speech.toLowerCase();
-		// Detect if player seems distressed or excited from their words
+		CompanionMoodVector targetVec = currentVector.get();
 		if (lower.contains("öldüm") || lower.contains("battım") || lower.contains("mahvoldum")) {
-			currentMood.set(CompanionMoodState.SAD);
+			targetVec = new CompanionMoodVector(-0.6, 0.4);
 			recordMemoryEvent("Oyuncu hayal kırıklığını dile getirdi.");
 		} else if (lower.contains("bulduk") || lower.contains("buldum") || lower.contains("efsane") || lower.contains("yaptım")) {
-			currentMood.set(CompanionMoodState.EXCITED);
+			targetVec = new CompanionMoodVector(0.85, 0.90);
 			recordMemoryEvent("Oyuncu bir şeyi başardığını söyledi.");
 		} else if (lower.contains("sıkıldım") || lower.contains("ne yapacağım") || lower.contains("bıktım")) {
-			currentMood.set(CompanionMoodState.BORED);
+			targetVec = new CompanionMoodVector(0.0, 0.15);
 			recordMemoryEvent("Oyuncu sıkıldığını belirtti.");
 		}
+		final CompanionMoodVector t = targetVec;
+		currentVector.updateAndGet(curr -> curr.smoothToward(t, 0.4));
 	}
 
 	/**
 	 * Generates the mood context string to inject into the AI prompt.
 	 */
 	public static String getMoodContext() {
-		CompanionMoodState mood = currentMood.get();
+		CompanionMoodVector vec = currentVector.get();
+		CompanionMoodState mood = CompanionMoodState.fromVector(vec);
 		StringBuilder sb = new StringBuilder();
-		sb.append("[MEVCUT RUH HALİN]: ").append(mood.getLabel()).append("\n");
+		sb.append("[MEVCUT RUH HALİN (Valence-Arousal Vektörü)]: valence=").append(String.format(java.util.Locale.US, "%.2f", vec.valence()))
+				.append(", arousal=").append(String.format(java.util.Locale.US, "%.2f", vec.arousal()))
+				.append(" (").append(mood.getLabel()).append(" ağırlıklı)\n");
 		sb.append("[BU RUH HALİNDE NASIL KONUŞMALISIN]: ").append(mood.getSpeakingInstruction()).append("\n");
 
 		if (!emotionalMemory.isEmpty()) {
@@ -120,25 +133,25 @@ public class CompanionMoodEngine {
 		emotionalMemory.addLast(description);
 	}
 
-	private static CompanionMoodState resolveMood(MoodTrigger trigger) {
+	private static CompanionMoodVector resolveVector(MoodTrigger trigger) {
 		switch (trigger) {
-			case PLAYER_DIED:         return CompanionMoodState.SAD;
-			case FOUND_DIAMOND:       return CompanionMoodState.EXCITED;
-			case FOUND_NETHERITE:     return CompanionMoodState.EXCITED;
-			case NIGHT_FELL:          return CompanionMoodState.SCARED;
-			case LOW_HEALTH:          return CompanionMoodState.SCARED;
-			case CREEPER_NEARBY:      return CompanionMoodState.SCARED;
-			case WARDEN_ZONE:         return CompanionMoodState.TENSE;
-			case NETHER_ENTERED:      return CompanionMoodState.TENSE;
-			case END_ENTERED:         return CompanionMoodState.TENSE;
-			case BUILDING_DETECTED:   return CompanionMoodState.PROUD;
-			case NEW_BIOME:           return CompanionMoodState.CURIOUS;
-			case NEW_ITEM:            return CompanionMoodState.CURIOUS;
-			case PLAYER_IDLE:         return CompanionMoodState.BORED;
-			case REPEATED_MISTAKE:    return CompanionMoodState.FRUSTRATED;
-			case DAY_CAME:            return CompanionMoodState.EXCITED;
-			case BOSS_KILLED:         return CompanionMoodState.EXCITED;
-			default:                  return currentMood.get(); // Keep current
+			case PLAYER_DIED:         return new CompanionMoodVector(-0.7, 0.4);
+			case FOUND_DIAMOND:
+			case FOUND_NETHERITE:
+			case BOSS_KILLED:         return new CompanionMoodVector(0.9, 0.95);
+			case NIGHT_FELL:          return new CompanionMoodVector(-0.4, 0.8);
+			case LOW_HEALTH:
+			case CREEPER_NEARBY:      return new CompanionMoodVector(-0.8, 0.95);
+			case WARDEN_ZONE:
+			case NETHER_ENTERED:
+			case END_ENTERED:         return new CompanionMoodVector(-0.3, 0.75);
+			case BUILDING_DETECTED:   return new CompanionMoodVector(0.6, 0.6);
+			case NEW_BIOME:
+			case NEW_ITEM:            return new CompanionMoodVector(0.4, 0.5);
+			case PLAYER_IDLE:         return new CompanionMoodVector(0.0, 0.15);
+			case REPEATED_MISTAKE:    return new CompanionMoodVector(-0.3, 0.4);
+			case DAY_CAME:            return new CompanionMoodVector(0.5, 0.3);
+			default:                  return currentVector.get();
 		}
 	}
 }

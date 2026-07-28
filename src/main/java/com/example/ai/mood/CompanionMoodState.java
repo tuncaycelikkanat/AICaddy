@@ -74,4 +74,22 @@ public enum CompanionMoodState {
 	public String getSpeakingInstruction() {
 		return speakingInstruction;
 	}
+
+	/**
+	 * Derives the appropriate discrete CompanionMoodState from continuous Valence-Arousal coordinates.
+	 */
+	public static CompanionMoodState fromVector(CompanionMoodVector v) {
+		if (v == null) return CURIOUS;
+		double val = v.valence();
+		double aro = v.arousal();
+
+		if (aro > 0.75 && val < -0.2) return SCARED;
+		if (aro > 0.65 && val >= 0.2) return EXCITED;
+		if (aro > 0.50 && val >= 0.2) return PROUD;
+		if (val < -0.4 && aro <= 0.7) return SAD;
+		if (val < -0.2 && aro > 0.5) return TENSE;
+		if (val < -0.2 && aro <= 0.5) return FRUSTRATED;
+		if (aro <= 0.30) return BORED;
+		return CURIOUS;
+	}
 }
