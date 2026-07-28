@@ -171,6 +171,9 @@ public class AiBrainManager {
 			promptBuilder.append(staticFacts).append("\n");
 		}
 
+		String progressionMemory = com.example.ai.memory.MinecraftProgressionManager.getProgressionMemoryPrompt(player);
+		promptBuilder.append(progressionMemory).append("\n");
+
 		promptBuilder.append("[AKTİF OYUN TARZI MODUN]: ").append(currentMode.getDisplayName()).append("\n")
 				.append("MOD TALİMATI: ").append(currentMode.getPromptInstruction()).append("\n\n");
 
