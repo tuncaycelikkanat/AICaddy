@@ -78,8 +78,12 @@ public class GroqAiProvider implements AiProvider {
 		JsonObject requestBody = new JsonObject();
 		requestBody.addProperty("model", MODEL_NAME);
 		requestBody.add("messages", messages);
-		requestBody.addProperty("max_tokens", 60);
+		requestBody.addProperty("max_tokens", 220);
 		requestBody.addProperty("temperature", 0.75);
+
+		JsonObject responseFormat = new JsonObject();
+		responseFormat.addProperty("type", "json_object");
+		requestBody.add("response_format", responseFormat);
 
 		HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(GROQ_API_URL))
@@ -110,7 +114,17 @@ public class GroqAiProvider implements AiProvider {
 				JsonObject firstChoice = choices.get(0).getAsJsonObject();
 				JsonObject messageObj = firstChoice.getAsJsonObject("message");
 				if (messageObj != null && messageObj.has("content")) {
-					return messageObj.get("content").getAsString().trim();
+					String rawContent = messageObj.get("content").getAsString().trim();
+					try {
+						// Try parsing structured JSON schema from Llama 3.3
+						JsonObject structuredObj = JsonParser.parseString(rawContent).getAsJsonObject();
+						if (structuredObj.has("final_replik")) {
+							return structuredObj.get("final_replik").getAsString().trim();
+						}
+					} catch (Exception ignored) {
+						// Fallback to raw string if JSON parsing of content fails
+					}
+					return rawContent;
 				}
 			}
 		} catch (Exception e) {
