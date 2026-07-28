@@ -127,6 +127,8 @@ public class EmotionalEventDetector {
 			CompanionDebugLogger.logEventDetected(player, "DÜŞÜK_CAN",
 				String.format("HP: %.1f / %.1f (%.0f%%)", currentHp, maxHp, ratio * 100));
 			CompanionMoodEngine.processTrigger(MoodTrigger.LOW_HEALTH, player);
+			com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
+				player.getUUID(), player.getScoreboardName(), "Tehlikeli şekilde canı azaldı (" + (int)(ratio * 100) + "%)");
 			triggerProactiveSpeech(player, "low_health",
 				"Oyuncunun canı tehlikeli derecede düşük! Companion panikleyerek kısa bir şey söylesin.");
 		}
@@ -150,6 +152,8 @@ public class EmotionalEventDetector {
 			String biomeName = biome.replace("minecraft:", "").replace("_", " ");
 			CompanionDebugLogger.logEventDetected(player, "YENİ_BİYOM", prev + " → " + biome);
 			CompanionMoodEngine.processTrigger(MoodTrigger.NEW_BIOME, player);
+			com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
+				player.getUUID(), player.getScoreboardName(), "'" + biomeName + "' biyomunu keşfetti");
 			triggerProactiveSpeech(player, "new_biome",
 				"Yeni bir biyoma girdik: '" + biomeName + "'. Companion merakla kısa bir yorum yapsın.");
 		}
@@ -172,6 +176,8 @@ public class EmotionalEventDetector {
 					String itemName = stack.getHoverName().getString();
 					CompanionDebugLogger.logEventDetected(player, "EFSANE_EŞYA", itemName);
 					CompanionMoodEngine.processTrigger(trigger, player);
+					com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
+						player.getUUID(), player.getScoreboardName(), "Efsanevi eşya buldu: '" + itemName + "'");
 					triggerProactiveSpeech(player, "exciting_item_" + itemName,
 						"Oyuncu '" + itemName + "' buldu! Companion çok excited, bağıra çağıra coşsun.");
 
@@ -179,6 +185,8 @@ public class EmotionalEventDetector {
 					String itemName = stack.getHoverName().getString();
 					CompanionDebugLogger.logEventDetected(player, "İLGİNÇ_EŞYA", itemName);
 					CompanionMoodEngine.processTrigger(MoodTrigger.NEW_ITEM, player);
+					com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
+						player.getUUID(), player.getScoreboardName(), "Nadir eşya buldu: '" + itemName + "'");
 					triggerProactiveSpeech(player, "curious_item_" + itemName,
 						"Oyuncu ilk kez '" + itemName + "' buldu. Companion meraklı, 'bu ne ya' tarzında.");
 				}

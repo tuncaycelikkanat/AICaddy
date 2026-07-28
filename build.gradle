@@ -55,6 +55,10 @@ dependencies {
 	// JLayer MP3 Player (TTS seslerini oynatmak için)
 	implementation "javazoom:jlayer:1.0.1"
 	include "javazoom:jlayer:1.0.1"
+
+	// SQLite JDBC driver for persistent AI Companion memory
+	implementation "org.xerial:sqlite-jdbc:3.46.0.0"
+	include "org.xerial:sqlite-jdbc:3.46.0.0"
 }
 
 processResources {

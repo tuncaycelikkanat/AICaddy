@@ -27,6 +27,9 @@ public class ExampleMod implements ModInitializer {
 		// Initialize Vosk STT engine asynchronously.
 		VoskSttManager.initialize();
 
+		// Initialize SQLite persistent player memory store.
+		com.example.ai.memory.PlayerMemoryStore.init();
+
 		// Register emotional event detector (tick-based game event listener).
 		EmotionalEventDetector.register();
 

@@ -127,6 +127,16 @@ public class AiBrainManager {
 		// ── Current mood ──
 		sb.append(moodContext).append("\n");
 
+		// ── Persistent memory (SQLite) ──
+		List<String> recentEvents = com.example.ai.memory.PlayerMemoryStore.getRecentEvents(player.getUUID());
+		if (!recentEvents.isEmpty()) {
+			sb.append("[BU OYUNCUYLA DAHA ÖNCE YAŞADIKLARIMIZ]:\n");
+			for (String evt : recentEvents) {
+				sb.append("- ").append(evt).append("\n");
+			}
+			sb.append("\n");
+		}
+
 		// ── Conversation history ──
 		List<ChatTurn> history = getHistorySnapshot();
 		if (!history.isEmpty()) {
