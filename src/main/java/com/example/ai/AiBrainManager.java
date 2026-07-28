@@ -185,11 +185,10 @@ public class AiBrainManager {
 	 * Called by EmotionalEventDetector when something notable happens.
 	 */
 	public static void triggerProactiveResponse(ServerPlayer player, String situationPrompt) {
-		AiProvider provider = getActiveProvider();
-		provider.generateResponseAsync(situationPrompt, "").thenAccept(response -> {
-			broadcastResponse(player, response, false);
+		getActiveProvider().generateResponseAsync(situationPrompt, "").thenAccept(response -> {
+			broadcastResponse(player, response);
 		}).exceptionally(ex -> {
-			ExampleMod.LOGGER.error("Proactive speech failed.", ex);
+			ExampleMod.LOGGER.error("Proaktif konuşma başarısız.", ex);
 			return null;
 		});
 	}
@@ -203,12 +202,12 @@ public class AiBrainManager {
 
 		generateCompanionResponseAsync(player, playerSpeech).thenAccept(aiResponse -> {
 			addTurnToHistory(playerSpeech, aiResponse);
-			broadcastResponse(player, aiResponse, true);
+			broadcastResponse(player, aiResponse);
 		});
 	}
 
-	private static void broadcastResponse(ServerPlayer player, String message, boolean logHistory) {
-		ExampleMod.LOGGER.info("🐱 [Kedi -> " + player.getScoreboardName() + "]: \"" + message + "\"");
+	private static void broadcastResponse(ServerPlayer player, String message) {
+		ExampleMod.LOGGER.info("🐱 [Kedi -> {}]: \"{}\"", player.getScoreboardName(), message);
 		if (ExampleMod.SERVER_INSTANCE != null) {
 			ExampleMod.SERVER_INSTANCE.execute(() -> {
 				ExampleMod.SERVER_INSTANCE.getPlayerList().broadcastSystemMessage(

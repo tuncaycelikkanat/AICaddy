@@ -59,30 +59,33 @@ public class GroqAiProvider implements AiProvider {
 	public CompletableFuture<String> generateResponseAsync(String systemPrompt, String userMessage) {
 		String key = getApiKey();
 		if (key == null || key.isEmpty()) {
-			ExampleMod.LOGGER.warn("Groq API key is missing. Add it to config/groq_api_key.txt.");
-			return CompletableFuture.completedFuture("Miyav? (Groq API anahtarı bulunamadı)");
+			ExampleMod.LOGGER.warn("Groq API anahtarı eksik. config/groq_api_key.txt dosyasına ekle.");
+			return CompletableFuture.completedFuture("Miyav? (API anahtarı bulunamadı)");
 		}
+
+		JsonArray messages = new JsonArray();
 
 		JsonObject systemMsg = new JsonObject();
 		systemMsg.addProperty("role", "system");
 		systemMsg.addProperty("content", systemPrompt);
-
-		JsonObject userMsg = new JsonObject();
-		userMsg.addProperty("role", "user");
-		userMsg.addProperty("content", userMessage);
-
-		JsonArray messages = new JsonArray();
 		messages.add(systemMsg);
-		messages.add(userMsg);
+
+		// Only add user message if it's non-empty (proactive speech sends empty string)
+		if (userMessage != null && !userMessage.isBlank()) {
+			JsonObject userMsg = new JsonObject();
+			userMsg.addProperty("role", "user");
+			userMsg.addProperty("content", userMessage);
+			messages.add(userMsg);
+		}
+
+		JsonObject responseFormat = new JsonObject();
+		responseFormat.addProperty("type", "json_object");
 
 		JsonObject requestBody = new JsonObject();
 		requestBody.addProperty("model", MODEL_NAME);
 		requestBody.add("messages", messages);
 		requestBody.addProperty("max_tokens", 220);
 		requestBody.addProperty("temperature", 0.75);
-
-		JsonObject responseFormat = new JsonObject();
-		responseFormat.addProperty("type", "json_object");
 		requestBody.add("response_format", responseFormat);
 
 		HttpRequest request = HttpRequest.newBuilder()
@@ -95,41 +98,43 @@ public class GroqAiProvider implements AiProvider {
 		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
-						ExampleMod.LOGGER.error("Groq API error code " + response.statusCode() + ": " + response.body());
+						ExampleMod.LOGGER.error("Groq API hata kodu {}: {}", response.statusCode(), response.body());
 						return "Miyav... (Groq bağlantı hatası: " + response.statusCode() + ")";
 					}
-					return extractTextFromJson(response.body());
+					return extractFinalReplik(response.body());
 				})
 				.exceptionally(ex -> {
-					ExampleMod.LOGGER.error("Groq API request failed.", ex);
+					ExampleMod.LOGGER.error("Groq API isteği başarısız.", ex);
 					return "Miyav! (Groq sunucusuna ulaşılamadı)";
 				});
 	}
 
-	private String extractTextFromJson(String json) {
+	/**
+	 * Parses the Groq response JSON and extracts "final_replik" if present,
+	 * otherwise falls back to the raw content string.
+	 */
+	private String extractFinalReplik(String json) {
 		try {
 			JsonObject root = JsonParser.parseString(json).getAsJsonObject();
 			JsonArray choices = root.getAsJsonArray("choices");
-			if (choices != null && choices.size() > 0) {
-				JsonObject firstChoice = choices.get(0).getAsJsonObject();
-				JsonObject messageObj = firstChoice.getAsJsonObject("message");
-				if (messageObj != null && messageObj.has("content")) {
-					String rawContent = messageObj.get("content").getAsString().trim();
+			if (choices != null && !choices.isEmpty()) {
+				JsonObject message = choices.get(0).getAsJsonObject().getAsJsonObject("message");
+				if (message != null && message.has("content")) {
+					String raw = message.get("content").getAsString().trim();
 					try {
-						// Try parsing structured JSON schema from Llama 3.3
-						JsonObject structuredObj = JsonParser.parseString(rawContent).getAsJsonObject();
-						if (structuredObj.has("final_replik")) {
-							return structuredObj.get("final_replik").getAsString().trim();
+						JsonObject structured = JsonParser.parseString(raw).getAsJsonObject();
+						if (structured.has("final_replik")) {
+							return structured.get("final_replik").getAsString().trim();
 						}
 					} catch (Exception ignored) {
-						// Fallback to raw string if JSON parsing of content fails
+						// Model didn't return JSON — use raw text directly
 					}
-					return rawContent;
+					return raw;
 				}
 			}
 		} catch (Exception e) {
-			ExampleMod.LOGGER.error("Failed to parse JSON response from Groq.", e);
+			ExampleMod.LOGGER.error("Groq yanıtı ayrıştırılamadı.", e);
 		}
-		return "Miyav... (Groq yanıtını anlayamadım)";
+		return "Miyav... (yanıt anlaşılamadı)";
 	}
 }

@@ -54,13 +54,14 @@ public class MinecraftContextProvider {
 
 		// Format structured context string for LLM prompt
 		StringBuilder sb = new StringBuilder();
-		sb.append("[Player Context]\n");
-		sb.append("- Health: ").append(String.format("%.1f/%.1f", health, maxHealth))
-		  .append(" | Hunger: ").append(hunger).append("/20\n");
-		sb.append("- Dimension: ").append(dimension).append(" | Time: ").append(timeStr).append(" | Biome: ").append(biome).append("\n");
-		sb.append("- Holding: ").append(holding).append("\n");
-		sb.append("- Looking At: ").append(lookingAt).append("\n");
-		sb.append("- Inventory: ").append(inventorySummary);
+		sb.append("- Can: ").append(String.format("%.0f/%.0f", health, maxHealth))
+		  .append(" | Açlık: ").append(hunger).append("/20\n");
+		sb.append("- Boyut: ").append(dimension)
+		  .append(" | Biyom: ").append(biome.replace("minecraft:", ""))
+		  .append(" | ").append(timeStr).append("\n");
+		sb.append("- Elinde: ").append(holding).append("\n");
+		sb.append("- Baktığı: ").append(lookingAt).append("\n");
+		sb.append("- Envanter: ").append(inventorySummary);
 
 		return sb.toString();
 	}
