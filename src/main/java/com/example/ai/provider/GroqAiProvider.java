@@ -78,8 +78,8 @@ public class GroqAiProvider implements AiProvider {
 		JsonObject requestBody = new JsonObject();
 		requestBody.addProperty("model", MODEL_NAME);
 		requestBody.add("messages", messages);
-		requestBody.addProperty("max_tokens", 120);
-		requestBody.addProperty("temperature", 0.85);
+		requestBody.addProperty("max_tokens", 60);
+		requestBody.addProperty("temperature", 0.75);
 
 		HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(GROQ_API_URL))
