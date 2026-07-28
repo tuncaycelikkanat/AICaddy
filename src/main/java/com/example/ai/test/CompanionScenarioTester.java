@@ -190,7 +190,7 @@ public class CompanionScenarioTester {
 		};
 	}
 
-	private static String buildSystemPrompt(Scenario sc) {
+	public static String buildSystemPrompt(Scenario sc) {
 		return "Sen Minecraft oynayan bir oyuncunun en yakın arkadaşı 'Kedi'sin. " +
 				"Şu anki ruh halin: " + sc.moodLabel() + " (" + sc.expectedTone() + "). " +
 				"Öğretmen gibi davranma, ders verme. Sadece 1-2 cümleyle spontane ve doğal Türkçe tepki ver.\n" +
@@ -198,14 +198,13 @@ public class CompanionScenarioTester {
 				"- SADECE Türkçe kelimeler kullan. Tek bir İngilizce, Çince veya Vietnamca kelime bile KABUL EDİLEMEZ. 'Oh no' yerine 'Eyvah', 'Olamaz' de.\n" +
 				"- Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz gözlem paylaş.\n" +
 				(sc.moodLabel().equals("SAD") ? "- SAD RUH HALİ: Önce sadece oyuncunun duygusunu ve acısını onayla/yansıt (çözüm önermeden 1 kısa cümle). Müşteri hizmetleri gibi 'senden ne istiyorum/nasıl yardımcı olayım' ASLA deme. İkinci cümlede hafif bir teselli ver.\n" : "") +
-				"- ÖNEMLİ: `ic_dusunce` ve `durum_analizi` alanlarında genel kalıplar YASAKTIR. Mutlaka bu senaryoya özgü en az bir somut detayı (blok adı, varlık adı, obje adı, oyuncunun eylemi) belirterek özgün bir analiz yaz.\n" +
-				"ÇIKTI FORMATI - SADECE JSON:\n" +
+				"- Çıktıyı MUTLAKA geçerli bir JSON formatında şu şemada ver:\n" +
 				"{\n" +
-				"  \"durum_analizi\": \"Oyuncu ve çevre durumu kısaca (somut varlık/blok adıyla)\",\n" +
+				"  \"durum_analizi\": \"Sahneye/senaryoya özgü somut varlık veya blok adı belirten 1 cümlelik analiz\",\n" +
 				"  \"kedi_duygusu\": \"" + sc.moodLabel() + "\",\n" +
-				"  \"ic_dusunce\": \"Kedi'nin iç tepkisi (senaryoya özel somut detayla)\",\n" +
-				"  \"final_replik\": \"1-2 cümlelik spontane kedi repliği\"\n" +
-				"}\n";
+				"  \"ic_dusunce\": \"Senaryoya özgü somut varlık veya blok adını belirten 1 cümlelik kedi düşüncesi\",\n" +
+				"  \"final_replik\": \"Kedi'nin oyuncuya söyleyeceği seslendirilecek doğal Türkçe replik\"\n" +
+				"}";
 	}
 
 	private static String readGroqApiKey() {
@@ -226,7 +225,7 @@ public class CompanionScenarioTester {
 		return null;
 	}
 
-	private static List<Scenario> build50Scenarios() {
+	public static List<Scenario> build50Scenarios() {
 		List<Scenario> list = new ArrayList<>();
 		// ── 1. EXCITED (1..7) ──
 		list.add(new Scenario(1, "EXCITED", "EXCITED", "Oyuncu mağaranın derinliklerinde 8'li elmas damarı buldu!", "Coşkulu, hiperaktif, 'YOO BE!' diyen"));

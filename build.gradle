@@ -116,3 +116,10 @@ task runScenarioTest(type: JavaExec) {
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.example.ai.test.CompanionScenarioTester'
 }
+
+task runMultiModelTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs side-by-side comparative AI Companion test across Groq, Gemini, DeepSeek, and Kimi'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.MultiModelScenarioTester'
+}
