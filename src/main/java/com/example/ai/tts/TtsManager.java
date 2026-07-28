@@ -34,6 +34,13 @@ public class TtsManager {
 		return ttsEnabled;
 	}
 
+	private static final com.example.ai.resilience.CircuitBreaker EDGE_TTS_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("EdgeTTS", 3, 60_000L);
+	private static final com.example.ai.resilience.CircuitBreaker ELEVEN_LABS_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("ElevenLabs", 3, 60_000L);
+	private static final com.example.ai.resilience.CircuitBreaker STREAM_ELEMENTS_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("StreamElements", 3, 60_000L);
+
 	/**
 	 * Speaks a single sentence immediately via the FIFO single-thread TTS executor.
 	 * Used by streaming LLM responses so the first sentence plays while the second is still generating.
@@ -50,14 +57,64 @@ public class TtsManager {
 
 		TTS_EXECUTOR.submit(() -> {
 			try {
-				if (!speakEdgeTts(clean)) {
-					String elevenKey = getElevenLabsApiKey();
-					if (!elevenKey.isEmpty() && speakElevenLabs(clean, elevenKey)) return;
-					speakStreamElements(clean);
+				if (!EDGE_TTS_BREAKER.isOpen()) {
+					if (speakEdgeTts(clean)) {
+						EDGE_TTS_BREAKER.recordSuccess();
+						return;
+					} else {
+						EDGE_TTS_BREAKER.recordFailure();
+					}
 				}
+
+				String elevenKey = getElevenLabsApiKey();
+				if (!elevenKey.isEmpty() && !ELEVEN_LABS_BREAKER.isOpen()) {
+					if (speakElevenLabs(clean, elevenKey)) {
+						ELEVEN_LABS_BREAKER.recordSuccess();
+						return;
+					} else {
+						ELEVEN_LABS_BREAKER.recordFailure();
+					}
+				}
+
+				if (!STREAM_ELEMENTS_BREAKER.isOpen()) {
+					if (speakStreamElements(clean)) {
+						STREAM_ELEMENTS_BREAKER.recordSuccess();
+						return;
+					} else {
+						STREAM_ELEMENTS_BREAKER.recordFailure();
+					}
+				}
+
+				// All providers failed or circuit breakers are open -> fallback sound
+				playCannedFallback(player);
 			} catch (Exception e) {
 				ExampleMod.LOGGER.error("Streaming TTS oynatma hatası: {}", e.getMessage());
+				playCannedFallback(player);
 			}
+		});
+	}
+
+	/**
+	 * Plays a canned backup purr/meow response sound when all external TTS providers fail or circuit breakers open.
+	 */
+	private static void playCannedFallback(ServerPlayer player) {
+		if (ExampleMod.SERVER_INSTANCE == null) return;
+		ExampleMod.SERVER_INSTANCE.execute(() -> {
+			try {
+				ServerPlayer target = player;
+				if (target == null && !ExampleMod.SERVER_INSTANCE.getPlayerList().getPlayers().isEmpty()) {
+					target = ExampleMod.SERVER_INSTANCE.getPlayerList().getPlayers().get(0);
+				}
+				if (target != null) {
+					target.level().playSound(
+							null,
+							target.blockPosition(),
+							SoundEvents.CAT_PURR,
+							SoundSource.NEUTRAL,
+							1.0f, 1.0f
+					);
+				}
+			} catch (Exception ignored) {}
 		});
 	}
 
@@ -182,7 +239,7 @@ public class TtsManager {
 
 	// ── StreamElements Fallback ───────────────────────────────────────────────
 
-	private static void speakStreamElements(String text) {
+	private static boolean speakStreamElements(String text) {
 		try {
 			String encoded = URLEncoder.encode(text, StandardCharsets.UTF_8);
 			URL url = new URL("https://api.streamelements.com/kappa/v2/speech?voice=Filiz&text=" + encoded);
@@ -193,10 +250,12 @@ public class TtsManager {
 			conn.setReadTimeout(4000);
 			if (conn.getResponseCode() == 200) {
 				playWithMpv(conn.getInputStream());
+				return true;
 			}
 		} catch (Exception e) {
 			ExampleMod.LOGGER.warn("StreamElements fallback başarısız: {}", e.getMessage());
 		}
+		return false;
 	}
 
 	// ── Shared Helpers ────────────────────────────────────────────────────────

@@ -55,8 +55,16 @@ public class GroqAiProvider implements AiProvider {
 		return null;
 	}
 
+	private static final com.example.ai.resilience.CircuitBreaker GROQ_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("GroqAPI", 3, 60_000L);
+
 	@Override
 	public CompletableFuture<String> generateResponseAsync(String systemPrompt, String userMessage) {
+		if (GROQ_BREAKER.isOpen()) {
+			ExampleMod.LOGGER.warn("Groq API devre kesicisi açık - istek engellendi (cooldown bekleniyor).");
+			return CompletableFuture.completedFuture("Miyav... (Zihnim biraz yoruldu, 1 dakika dinleniyorum)");
+		}
+
 		String key = getApiKey();
 		if (key == null || key.isEmpty()) {
 			ExampleMod.LOGGER.warn("Groq API anahtarı eksik. config/groq_api_key.txt dosyasına ekle.");
@@ -98,13 +106,16 @@ public class GroqAiProvider implements AiProvider {
 		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
+						GROQ_BREAKER.recordFailure();
 						String errBody = response.body().reduce("", (a, b) -> a + "\n" + b);
 						ExampleMod.LOGGER.error("Groq API hata kodu {}: {}", response.statusCode(), errBody);
 						return "Miyav... (Groq bağlantı hatası: " + response.statusCode() + ")";
 					}
+					GROQ_BREAKER.recordSuccess();
 					return processSseStream(response.body());
 				})
 				.exceptionally(ex -> {
+					GROQ_BREAKER.recordFailure();
 					ExampleMod.LOGGER.error("Groq API isteği başarısız.", ex);
 					return "Miyav! (Groq sunucusuna ulaşılamadı)";
 				});
