@@ -91,8 +91,9 @@ public class GroqAiProvider implements AiProvider {
 		JsonObject requestBody = new JsonObject();
 		requestBody.addProperty("model", MODEL_NAME);
 		requestBody.add("messages", messages);
-		requestBody.addProperty("max_tokens", 220);
-		requestBody.addProperty("temperature", 0.75);
+		requestBody.addProperty("max_tokens", 250);
+		requestBody.addProperty("temperature", 0.72);
+		requestBody.addProperty("frequency_penalty", 0.45);
 		requestBody.addProperty("stream", true);
 		requestBody.add("response_format", responseFormat);
 
@@ -193,6 +194,24 @@ public class GroqAiProvider implements AiProvider {
 			}
 		}
 
+		fullReplik = sanitizeTurkishText(fullReplik);
 		return fullReplik;
+	}
+
+	public static String sanitizeTurkishText(String input) {
+		if (input == null) return "";
+		String clean = input
+				.replace("Oh no", "Eyvah")
+				.replace("oh no", "eyvah")
+				.replace("Oh No", "Eyvah")
+				.replace("AmanTanrım", "Aman Allah'ım")
+				.replace("Aman Allahım", "Aman Allah'ım")
+				.replace("OyuncuComplex", "Oyuncu karmaşık")
+				.replace("完全", "tamamen ")
+				.replace("thật ", "")
+				.replace("iets ", "bir şey ");
+		// Remove non-Latin/Turkish Unicode script blocks (Han, Hangul, Cyrillic, Thai, etc.)
+		clean = clean.replaceAll("[^a-zA-Z0-9çÇğĞıIİöÖşŞüÜ.,!?'\"\\s\\-—:\\(\\)]", "");
+		return clean.trim();
 	}
 }

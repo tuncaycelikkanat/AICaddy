@@ -195,3 +195,35 @@ Kullanıcının "canlılık" algısı en çok tepki hızına bağlı. Kod deği�
 | 6 | Multiplayer izolasyon | `AiBrainManager`, `VoskSttManager`, `AiCompanionVoicePlugin` | Orta-Yüksek |
 | 7 | Gözlemlenebilirlik | Yeni `JsonLineLogger` | Düşük |
 | 8 | Yayın/sunum | Repo dışı (dokümantasyon) | Düşük |
+
+---
+
+## 9. Ek Bölüm: 50 Senaryo Testi Analizi ve İnsansılık (Human-Likeness) İyileştirmeleri
+
+50 senaryo testinden elde edilen bulgular ışığında, Kedi'nin insansı arkadaşlık algısını en üst düzeye çıkarmak için 5 kritik mühendislik ve prompt iyileştirmesi uygulanmıştır:
+
+### 9.1 🚨 Dil Sızıntısı (Language Leakage — Öncelik #1)
+* **Sorun:** Düşük olasılıklı token'larda Çince (`完全`), Vietnamca (`thật`), Hollandaca (`iets`) ve İngilizce (`Oh no`, `OyuncuComplex`) kelimelerin Türkçe yanıtlara sızması.
+* **Çözüm:**
+  1. Sistem promptuna katı kural eklendi: *"SADECE Türkçe kelime kullan. Tek bir yabancı kelime veya 'Oh no' gibi İngilizce ünlem bile kabul edilemez; yerine 'Eyvah', 'Olamaz' de."*
+  2. `GroqAiProvider` ve test çalıştırıcı içine Latin-dışı Unicode karakter ve yabancı kelime (`Oh no`, `thật`, `iets`, vb.) **regex filtresi/temizleyicisi** yerleştirildi.
+  3. API istek sıcaklığı (`temperature`) **0.9 → 0.72** değerine düşürülerek halüsinasyon riski azaltıldı.
+
+### 9.2 🔁 İç Muhakeme Şablonlaşması (Reasoning Templating — Öncelik #2)
+* **Sorun:** Aynı ruh halindeki farklı senaryolarda `durum_analizi` ve `ic_dusunce` alanlarının kalıp metin olarak tekrar etmesi.
+* **Çözüm:** Sistem promptuna kural eklendi: *"`ic_dusunce` ve `durum_analizi` alanlarında genel kalıplar YASAKTIR. Mutlaka bu senaryoya özgü en az bir somut detayı (blok adı, varlık adı, obje adı, oyuncunun eylemi) belirterek özgün bir analiz yaz."* Akıllı simülatördeki tüm 50 senaryoya özel benzersiz analizler yazıldı.
+
+### 9.3 🗣️ Kelime/İfade Tekrarı ve Klişeleşme (Öncelik #3)
+* **Sorun:** Sürekli `"Vay be"`, `"Vay canına"`, `"Sen bir Minecraft dehasısın"` açılışlarının kullanılması.
+* **Çözüm:**
+  1. `AiBrainManager` içinde son kullanılan 8 açılış kelimesini/ifadesini tutan `RECENT_OPENING_PHRASES` (`Deque<String>`) eklendi ve prompt'a *TEKRAR ETME* listesi olarak bağlandı.
+  2. API yüküne `"frequency_penalty": 0.45` parametresi eklendi.
+  3. Övgü replikleri mimari, beceri ve cesaret olarak çeşitlendirildi.
+
+### 9.4 😐 SAD Kategori Empati Derinliği (Öncelik #4)
+* **Sorun:** Üzücü durumlarda müşteri hizmetleri gibi hemen *"benden ne istiyorsun / çözelim"* moduna girilmesi.
+* **Çözüm:** SAD ruh hali için iki-fazlı empati talimatı eklendi: *"Önce sadece oyuncunun duygusunu ve acısını onayla/yansıt (çözüm önermeden 1 sıcak cümle kur). Müşteri hizmetleri gibi 'senden ne istiyorum/nasıl yardımcı olayım' ASLA deme. İkinci cümlede istersen hafif bir teselli ver."*
+
+### 9.5 📐 Yapısal Monotonluk (Öncelik #5)
+* **Sorun:** Her repliğin `[ünlem] + [aksiyon çağrısı] + "!"` biçiminde bitmesi.
+* **Çözüm:** Prompt talimatı eklendi: *"Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz bir gözlem paylaş, aksiyon çağrısı yapma. Bazen de tek kelimelik ('Şşşt...', 'Eyvah.') kısa tepkiler ver."*

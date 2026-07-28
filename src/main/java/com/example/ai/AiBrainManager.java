@@ -35,9 +35,29 @@ public class AiBrainManager {
 			new java.util.concurrent.ConcurrentHashMap<>();
 	private static final int MAX_HISTORY_TURNS = 5;
 
+	// Anti-repetition memory for recent opening phrases (last 8)
+	private static final java.util.Deque<String> RECENT_OPENING_PHRASES = new java.util.concurrent.ConcurrentLinkedDeque<>();
+
+	public static void recordOpeningPhrase(String reply) {
+		if (reply == null || reply.isBlank()) return;
+		String[] words = reply.trim().split("\\s+");
+		if (words.length == 0) return;
+		String firstWord = words[0].replaceAll("[^a-zA-ZçÇğĞıIİöÖşŞüÜ]", "");
+		if (words.length > 1 && (firstWord.equalsIgnoreCase("Vay") || firstWord.equalsIgnoreCase("Aman") || firstWord.equalsIgnoreCase("Yine"))) {
+			firstWord = firstWord + " " + words[1].replaceAll("[^a-zA-ZçÇğĞıIİöÖşŞüÜ]", "");
+		}
+		if (!firstWord.isEmpty()) {
+			RECENT_OPENING_PHRASES.add(firstWord);
+			while (RECENT_OPENING_PHRASES.size() > 8) {
+				RECENT_OPENING_PHRASES.pollFirst();
+			}
+		}
+	}
+
 	// ─── History Management (Multiplayer Isolated) ─────────────────────────────
 
 	public static synchronized void addTurnToHistory(net.minecraft.server.level.ServerPlayer player, String userMsg, String aiResp) {
+		recordOpeningPhrase(aiResp);
 		java.util.UUID uuid = player != null ? player.getUUID() : java.util.UUID.nameUUIDFromBytes("console".getBytes());
 		List<ChatTurn> history = PLAYER_HISTORIES.computeIfAbsent(uuid, k -> new ArrayList<>());
 		history.add(new ChatTurn(userMsg, aiResp));
@@ -170,15 +190,23 @@ public class AiBrainManager {
 		sb.append("- Maksimum 2 kısa cümle. Ne uzun destan, ne tek kelime.\n");
 		sb.append("- Robotik listeler yok ('Adım 1, Adım 2' gibi).\n");
 		sb.append("- Taktik/ders verme. Sadece paylaş, tepki ver, hisset.\n");
-		sb.append("- Türkçe konuş. Doğal, samimi, spontane.\n");
+		sb.append("- SADECE Türkçe kelimeler kullan. Tek bir İngilizce, Çince veya Vietnamca kelime bile KABUL EDİLEMEZ. 'Oh no' gibi yabancı ünlem ASLA kullanma; yerine 'Eyvah', 'Olamaz' de.\n");
+		sb.append("- Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz bir gözlem paylaş, bazen de tek kelimelik ('Şşşt...', 'Eyvah.') tepkiler ver.\n");
+		if (CompanionMoodEngine.getCurrentMood() == com.example.ai.mood.CompanionMoodState.SAD) {
+			sb.append("- SAD RUH HALİ KURALI: Önce sadece duyguyu yansıt (1 kısa cümle, çözüm önermeden). Müşteri hizmetleri gibi 'senden ne istiyorum/nasıl yardımcı olayım' ASLA deme. İkinci cümlede hafif ve şefkatli bir teselli ver.\n");
+		}
+		if (!RECENT_OPENING_PHRASES.isEmpty()) {
+			sb.append("- Şu açılış kelimelerini/kalıplarını son zamanlarda kullandın, ASLA TEKRAR ETME: ").append(String.join(", ", RECENT_OPENING_PHRASES)).append("\n");
+		}
+		sb.append("- ÖNEMLİ: `ic_dusunce` ve `durum_analizi` alanlarında genel kalıplar YASAKTIR. Mutlaka bu senaryoya özgü en az bir somut detayı (blok adı, varlık adı, obje adı, oyuncunun eylemi) belirterek özgün bir analiz yaz.\n");
 		sb.append("- Ruh haline göre konuş — şu an ").append(CompanionMoodEngine.getCurrentMood().getLabel()).append(" hissediyorsun.\n\n");
 
 		// ── Output format (Multi-Agent Single-Call Structured JSON) ──
 		sb.append("ÇIKTI FORMATI — SADECE bu JSON (Tek çağrıda hem taktiksel analiz hem kişilikli yanıt):\n");
 		sb.append("{\n");
-		sb.append("  \"durum_analizi\": \"Oyuncunun durumu, canı, konumu, tehlike var mı kısa analiz\",\n");
+		sb.append("  \"durum_analizi\": \"Oyuncunun durumu, canı, konumu, tehlike var mı kısa analiz (somut varlık/blok adıyla)\",\n");
 		sb.append("  \"kedi_duygusu\": \"EXCITED / SCARED / SAD / PROUD / BORED / FRUSTRATED / CURIOUS / TENSE\",\n");
-		sb.append("  \"ic_dusunce\": \"Kedi'nin oyuncuyla ilgili o anki içsel tepkisi/düşüncesi\",\n");
+		sb.append("  \"ic_dusunce\": \"Kedi'nin oyuncuyla ilgili o anki içsel tepkisi/düşüncesi (senaryoya özel somut detayla)\",\n");
 		sb.append("  \"final_replik\": \"Oyuncuya söylenecek 1-2 cümlelik spontane kedi repliği\"\n");
 		sb.append("}\n\n");
 

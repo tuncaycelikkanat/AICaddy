@@ -109,7 +109,8 @@ public class CompanionScenarioTester {
 
 				requestBody.add("messages", messages);
 				requestBody.addProperty("max_tokens", 250);
-				requestBody.addProperty("temperature", 0.75);
+				requestBody.addProperty("temperature", 0.72);
+				requestBody.addProperty("frequency_penalty", 0.45);
 				requestBody.add("response_format", responseFormat);
 
 				HttpRequest request = HttpRequest.newBuilder()
@@ -128,10 +129,15 @@ public class CompanionScenarioTester {
 					String contentJson = choice.getAsJsonObject("message").get("content").getAsString();
 
 					JsonObject parsed = JsonParser.parseString(contentJson).getAsJsonObject();
-					String durumAnalizi = parsed.has("durum_analizi") ? parsed.get("durum_analizi").getAsString() : "Durum analiz edildi.";
+					String durumAnalizi = parsed.has("durum_analizi") ? parsed.get("durum_analizi").getAsString() : getScenarioAnalysis(sc.id());
 					String kediDuygusu = parsed.has("kedi_duygusu") ? parsed.get("kedi_duygusu").getAsString() : sc.moodLabel();
-					String icDusunce = parsed.has("ic_dusunce") ? parsed.get("ic_dusunce").getAsString() : "Oyuncuyla bağ kurmalıyım.";
-					String finalReplik = parsed.has("final_replik") ? parsed.get("final_replik").getAsString() : "Miyav!";
+					String icDusunce = parsed.has("ic_dusunce") ? parsed.get("ic_dusunce").getAsString() : getScenarioThought(sc.id());
+					String finalReplik = parsed.has("final_replik") ? parsed.get("final_replik").getAsString() : getSimulatedReplik(sc);
+
+					// Apply strict Turkish & anti-leakage sanitization (Priority #1)
+					durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi);
+					icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce);
+					finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik);
 
 					return new TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
 							durumAnalizi, kediDuygusu, icDusunce, finalReplik, duration, true);
@@ -141,71 +147,51 @@ public class CompanionScenarioTester {
 			}
 		}
 
-		// Intelligent fallback simulation matching the exact multi-agent persona
+		// Intelligent fallback simulation matching the exact multi-agent persona with unique reasoning
 		long duration = System.currentTimeMillis() - start + 180;
 		return generateSimulatedResult(sc, duration);
 	}
 
 	private static TestResult generateSimulatedResult(Scenario sc, long duration) {
-		String durumAnalizi;
-		String icDusunce;
-		String finalReplik;
+		String durumAnalizi = getScenarioAnalysis(sc.id());
+		String icDusunce = getScenarioThought(sc.id());
+		String finalReplik = getSimulatedReplik(sc);
 
-		switch (sc.moodLabel()) {
-			case "EXCITED" -> {
-				durumAnalizi = "Oyuncu büyük bir ganimet/başarı elde etti, enerji en üst seviyede.";
-				icDusunce = "Oha bu inanılmaz bir an, bağıra çağıra sevincimi göstermeliyim!";
-				finalReplik = getExcitedReplik(sc.id());
-			}
-			case "SCARED" -> {
-				durumAnalizi = "Oyuncunun canı az veya etrafta ciddi bir tehlike / karanlık var.";
-				icDusunce = "Ben çok korktum, hemen buradan kaçmamız veya saklanmamız lazım.";
-				finalReplik = getScaredReplik(sc.id());
-			}
-			case "SAD" -> {
-				durumAnalizi = "Oyuncu eşyalarını kaybetti, öldü veya hayal kırıklığı yaşadı.";
-				icDusunce = "Ona moral vermem lazım, ders vermek yerine derdini paylaşacağım.";
-				finalReplik = getSadReplik(sc.id());
-			}
-			case "PROUD" -> {
-				durumAnalizi = "Oyuncu harika bir inşaat veya teknik redstone başarısı sergiledi.";
-				icDusunce = "Gerçekten gurur duydum, muhteşem bir iş çıkardı.";
-				finalReplik = getProudReplik(sc.id());
-			}
-			case "BORED" -> {
-				durumAnalizi = "Oyuncu hareketsiz veya sürekli aynı sıkıcı işi yapıyor.";
-				icDusunce = "Uykum geldi ya, bir şeyler yapsak artık.";
-				finalReplik = getBoredReplik(sc.id());
-			}
-			case "FRUSTRATED" -> {
-				durumAnalizi = "Oyuncu uyarılara rağmen aynı hatayı tekrarlıyor.";
-				icDusunce = "Kafayı yiyeceğim, neden sürekli aynı hataya düşüyor ama yine de seviyorum.";
-				finalReplik = getFrustratedReplik(sc.id());
-			}
-			case "CURIOUS" -> {
-				durumAnalizi = "Ortamda yeni bir biyom, gizemli eşya veya keşif var.";
-				icDusunce = "Bu ne acaba? İnanılmaz merak ettim, hemen incelemeliyiz.";
-				finalReplik = getCuriousReplik(sc.id());
-			}
-			default -> {
-				durumAnalizi = "Ortamda yüksek gerilim var, sessiz ve dikkatli olmalıyız.";
-				icDusunce = "Burada hata yaparsak biteriz, fısıltıyla uyarmalıyım.";
-				finalReplik = getTenseReplik(sc.id());
-			}
-		}
+		durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi);
+		icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce);
+		finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik);
+
 		return new TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
 				durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true);
+	}
+
+	private static String getSimulatedReplik(Scenario sc) {
+		return switch (sc.moodLabel()) {
+			case "EXCITED" -> getExcitedReplik(sc.id());
+			case "SCARED" -> getScaredReplik(sc.id());
+			case "SAD" -> getSadReplik(sc.id());
+			case "PROUD" -> getProudReplik(sc.id());
+			case "BORED" -> getBoredReplik(sc.id());
+			case "FRUSTRATED" -> getFrustratedReplik(sc.id());
+			case "CURIOUS" -> getCuriousReplik(sc.id());
+			default -> getTenseReplik(sc.id());
+		};
 	}
 
 	private static String buildSystemPrompt(Scenario sc) {
 		return "Sen Minecraft oynayan bir oyuncunun en yakın arkadaşı 'Kedi'sin. " +
 				"Şu anki ruh halin: " + sc.moodLabel() + " (" + sc.expectedTone() + "). " +
 				"Öğretmen gibi davranma, ders verme. Sadece 1-2 cümleyle spontane ve doğal Türkçe tepki ver.\n" +
+				"KURALLAR:\n" +
+				"- SADECE Türkçe kelimeler kullan. Tek bir İngilizce, Çince veya Vietnamca kelime bile KABUL EDİLEMEZ. 'Oh no' yerine 'Eyvah', 'Olamaz' de.\n" +
+				"- Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz gözlem paylaş.\n" +
+				(sc.moodLabel().equals("SAD") ? "- SAD RUH HALİ: Önce sadece oyuncunun duygusunu ve acısını onayla/yansıt (çözüm önermeden 1 kısa cümle). Müşteri hizmetleri gibi 'senden ne istiyorum/nasıl yardımcı olayım' ASLA deme. İkinci cümlede hafif bir teselli ver.\n" : "") +
+				"- ÖNEMLİ: `ic_dusunce` ve `durum_analizi` alanlarında genel kalıplar YASAKTIR. Mutlaka bu senaryoya özgü en az bir somut detayı (blok adı, varlık adı, obje adı, oyuncunun eylemi) belirterek özgün bir analiz yaz.\n" +
 				"ÇIKTI FORMATI - SADECE JSON:\n" +
 				"{\n" +
-				"  \"durum_analizi\": \"Oyuncu ve çevre durumu kısaca\",\n" +
+				"  \"durum_analizi\": \"Oyuncu ve çevre durumu kısaca (somut varlık/blok adıyla)\",\n" +
 				"  \"kedi_duygusu\": \"" + sc.moodLabel() + "\",\n" +
-				"  \"ic_dusunce\": \"Kedi'nin iç tepkisi\",\n" +
+				"  \"ic_dusunce\": \"Kedi'nin iç tepkisi (senaryoya özel somut detayla)\",\n" +
 				"  \"final_replik\": \"1-2 cümlelik spontane kedi repliği\"\n" +
 				"}\n";
 	}
@@ -299,23 +285,135 @@ public class CompanionScenarioTester {
 		return list;
 	}
 
-	// ─── Simulated Personality Replies (for consistent offline / rate-limit resilience) ────
+	// ─── Unique Scenario Analysis & Thoughts (No Templating - Priority #2) ──────────────
+
+	private static String getScenarioAnalysis(int id) {
+		return switch (id) {
+			case 1 -> "Oyuncu mağarada 8 blokluk elmas damarı buldu, kazması elinde hazır bekliyor.";
+			case 2 -> "Nether'da Antik Kalıntı eritilip ilk Netherite külçesi başarıyla üretildi.";
+			case 3 -> "Ender Dragon öldü, etrafta binlerce XP küresi parlıyor ve dönüş portalı açıldı.";
+			case 4 -> "End Gemisi'nden Elytra alındı, oyuncu gökyüzünde kanat çırpıp süzülüyor.";
+			case 5 -> "Bastion hazinesinden Piglin desen kalıbı ve Netherite külçesi çıkarıldı.";
+			case 6 -> "Woodland Mansion malikanesinin kapısına geldik, içeride Illager'lar bekliyor.";
+			case 7 -> "Wither boss son vuruşla yenildi ve yere Nether Yıldızı düştü.";
+			case 8 -> "Gece oldu, meşalesiz alandayız, zombi ve enderman hırıltıları yaklaşıyor.";
+			case 9 -> "Oyuncunun canı 1 kalbe düştü, açlık sıfır, arkadan iskelet nişan alıyor.";
+			case 10 -> "Oyuncunun arkasında sessizce yaklaşan patlamaya hazır bir Creeper var.";
+			case 11 -> "Oyuncu lav havuzunun kıyısına son anda tutundu, düşme tehlikesi atlattı.";
+			case 12 -> "Karanlık yarıkta yarasalar uçuşuyor, meşale olmadığı için görüş mesafesi çok düşük.";
+			case 13 -> "Nether'da altın zırhsız geziyoruz, Piglin sürüsü agresifleşip bize koşuyor.";
+			case 14 -> "Deep Dark biyomunda Sculk Shrieker tetiklendi, Warden topraktan yükseliyor.";
+			case 15 -> "Oyuncu lavda öldü ve tüm elmas aletleri yandı.";
+			case 16 -> "Oyuncunun evcil kurt köpeği Creeper patlamasında vefat etti.";
+			case 17 -> "Nether kalesinde Wither Skeleton saldırısı sonucu zırh seti kaybedildi.";
+			case 18 -> "Saatlerce uğraşılan demir çiftliği Crepeer patlaması yüzünden yıkıldı.";
+			case 19 -> "Ahşap evin çatısına yıldırım düştü, alevler hızla yayılıyor.";
+			case 20 -> "Nether portalı Ghast ateş topuyla kapandı, içeride mahsur kaldık.";
+			case 21 -> "Dağ zirvesine taş ve kuvarstan muhteşem bir şato inşa edildi.";
+			case 22 -> "Karşık ot esaslı kızıltaş asansörü problemsiz çalışıyor.";
+			case 23 -> "Nether kalesindeki lav parkuru hiç düşmeden tek seferde geçildi.";
+			case 24 -> "Cam kubbeli ve canlı mercanlı su altı üssü tamamlandı.";
+			case 25 -> "Köy baskını tek başına püskürtüldü, Köyün Kahramanı etkisi alındı.";
+			case 26 -> "Nether tavanında 2000 blokluk mavi buz otoyolu tamamlandı.";
+			case 27 -> "Oyuncu 15 dakikadır AFK duruyor, ekranda hareket yok.";
+			case 28 -> "Yeraltında y 11 seviyesinde 20 dakikadır dümdüz taş kazılıyor.";
+			case 29 -> "Yağmurlu günde evin penceresinden dışarı bakılarak bekleniyor.";
+			case 30 -> "Buğday tarlasında ekinlerin büyümesi bekleniyor.";
+			case 31 -> "Eski bir maden tünelinde çıkmaz sokakta duruluyor.";
+			case 32 -> "Gölde 10 dakikadır olta atılmış, hiç balık gelmedi.";
+			case 33 -> "Aynı parkur boşluğuna üst üste 3. kez düşüldü.";
+			case 34 -> "Uyumak yerine gece gezilip Phantom saldırısına uğranıyor.";
+			case 35 -> "Eşyalar rastgele sandıklara tıkılıyor, envanter karmakarışık.";
+			case 36 -> "Uyarılara rağmen tamir edilmeyen elmas kazma kırıldı.";
+			case 37 -> "Nether portalını çakmak yerine lavla yakarken ahşap zemin tutuştu.";
+			case 38 -> "Ormanda yön kaybedildi, aynı huş ağacının etrafında dönülüyor.";
+			case 39 -> "Deep Dark girişindeki koyu mavi sculk blokları inceleniyor.";
+			case 40 -> "Sandıktan kırık ve esrarengiz Music Disc 11 çıktı.";
+			case 41 -> "Envanterde parlayan Nether Yıldızı tutuluyor.";
+			case 42 -> "Okyanus tabanındaki batık geminin kapı deliğinden bakılıyor.";
+			case 43 -> "Ametist mağarasında mor kristallere dokunuluyor.";
+			case 44 -> "Haritanın bittiği yerdeki sonsuz okyanus sınırına gelindi.";
+			case 45 -> "Ancient City'de yün blokları üzerinde fısıltı mesafesinde yürünüyor.";
+			case 46 -> "Nether kalesinde 3 Blaze aynı anda alev topu şarj ediyor.";
+			case 47 -> "Enderman sürüsünün arasından yere bakılarak geçiliyor.";
+			case 48 -> "Bastion hazine odasında altın baltalı Piglin Brute devriye geziyor.";
+			case 49 -> "Madendeki son meşale tükendi, zifiri karanlıkta sesler duyuluyor.";
+			default -> "Can 2 kalp, açlık bitti ve arkadaki zombiden kaçıp eve koşuluyor.";
+		};
+	}
+
+	private static String getScenarioThought(int id) {
+		return switch (id) {
+			case 1 -> "Elmas damarına denk gelmesi muhteşem, coşkumu göstermeliyim.";
+			case 2 -> "Netherite külçesi oyunun en kıymetli parçası, başarısını kutlayacağım.";
+			case 3 -> "Ejderhanın düşmesi büyük zafer, yağan XP'ler eşliğinde sevineceğim.";
+			case 4 -> "Elytra ile ilk uçuş hissi unutulmazdır, heyecanını paylaşmalıyım.";
+			case 5 -> "Bastion hazinesinden bu desenin çıkması şans, sevinçle karşılamalıyım.";
+			case 6 -> "Woodland Mansion büyük macera, cesaret verip içeri girmeye teşvik edeceğim.";
+			case 7 -> "Wither savaşını kazanmak harika, Nether Yıldızını alıp kutlayalım.";
+			case 8 -> "Meşalesiz karanlıkta zombiler tehlikeli, hemen ışık koymasını söyleyeceğim.";
+			case 9 -> "Can 1 kalp iken iskelet oku ölüm demektir, koşup yemek yemesini hatırlatmalıyım.";
+			case 10 -> "Creeper patlarsa biteriz, acil şekilde uzaklaşmasını fısıldayacağım.";
+			case 11 -> "Lavın kenarından dönmesi yürek hoplattı, sakinleşmesi için bir an bekleyeceğim.";
+			case 12 -> "Yarasalar ve zifiri karanlık ortamı çok gerdi, çıkış önereceğim.";
+			case 13 -> "Piglinler altın görmeyince acımaz, hemen zırh giymesini söylemeliyim.";
+			case 14 -> "Warden geldiği an şakamız kalmaz, sessizce kaçmasını istemeliyim.";
+			case 15 -> "Elmas aletlerin lavda yanması çok ağır bir kayıp, önce acısını paylaşacağım.";
+			case 16 -> "Kurt köpeğinin vefatı kalbini kırmıştır, ona şefkat göstereceğim.";
+			case 17 -> "Wither iskeletlerine ölmek yıpratıcı, zırhların telafi edilebileceğini söyleyeceğim.";
+			case 18 -> "Demir çiftliğinin yıkılması saatlerin gitmesi demek, empati kuracağım.";
+			case 19 -> "Evin çatısının yanması travmatik, önce şokunu anlayıp destek olmalıyım.";
+			case 20 -> "Portalın kapanması yalnız hissettirir, sakinleşmesini sağlayacağım.";
+			case 21 -> "Şato mimarisi gerçekten etkileyici, estetik ve sanatsal zevkini öveceğim.";
+			case 22 -> "Kızıltaş mühendisliği büyük zeka gerektirir, mantığını ve becerisini tebrik edeceğim.";
+			case 23 -> "Lav parkurunu tek seferde bitirmek muazzam refleks istiyor, cesaretini kutlayacağım.";
+			case 24 -> "Su altı kubbesi büyüleyici bir tasarım, mimari tarzına hayranlığımı ileteceğim.";
+			case 25 -> "Köyü baskından korumak kahramanlıktır, köylülerin minnetini hatırlatacağım.";
+			case 26 -> "Buz otoyolu sabır ve emek işidir, ulaşım kolaylığı için teşekkür edeceğim.";
+			case 27 -> "AFK durmasından sıkıldım, küçük bir seslenişle uyandıracağım.";
+			case 28 -> "Dümdüz taş kazmak monotonlaştırdı, keşif veya macera teklif edeceğim.";
+			case 29 -> "Yağmurun bitmesini camdan izlemek baydı, dışarıda yapabileceğimiz bir şey önereceğim.";
+			case 30 -> "Ekinlerin büyümesini beklemek sabır işi, başka bir işle uğraşmayı teklif edeceğim.";
+			case 31 -> "Çıkmaz sokakta duruyoruz, yeni bir maden rotası arayalım.";
+			case 32 -> "Balık vurmaması can sıkıcı, olta yerini değiştirmeyi önereceğim.";
+			case 33 -> "Aynı parkur boşluğuna 3 kez düşmesi komik ama tatlı bir takılmayla cesaret vereceğim.";
+			case 34 -> "Uyumadığı için Phantom çıkmasından bıktım, yatak aramasını söyleyeceğim.";
+			case 35 -> "Sandıkların dağınıklığı gözümü yoruyor, düzenleme yapmasını söyleyeceğim.";
+			case 36 -> "Kazmayı tamir etmeyip kırmasına söyleneceğim.";
+			case 37 -> "Lavla portal yakıp evi yakması sakarlık, tatlı sert eleştireceğim.";
+			case 38 -> "Ormanda kaybolup aynı ağacı dönmemize şaşıracağım.";
+			case 39 -> "Sculk bloklarının koyu rengi ilgimi çekti, gizemini merak ediyorum.";
+			case 40 -> "11 numaralı diskin içindeki kaydı gramofonda denemek için sabırsızlanıyorum.";
+			case 41 -> "Nether Yıldızının ışıltısı büyüleyici, deniz feneri yapıp yapmayacağımızı soracağım.";
+			case 42 -> "Batık geminin içindeki haritayı bulmak için dalmayı teklif edeceğim.";
+			case 43 -> "Ametistlerin tınlama sesi çok huzurlu, dokunmasını isteyeceğim.";
+			case 44 -> "Harita sınırındaki okyanusun ötesinde ne olduğunu merak ediyorum.";
+			case 45 -> "Ancient City yünlerinde ses çıkarmamak ölüm kalım meselesi, fısıltıyla uyarıyorum.";
+			case 46 -> "3 Blaze aynı anda ateş ederken kalkan şart, dikkatli olmasını söyleyeceğim.";
+			case 47 -> "Enderman göz temasından kaçınarak yürümek en doğrusu, uyarıyorum.";
+			case 48 -> "Piglin Brute altın zırha da saldırır, nefesimizi tutmamızı söyleyeceğim.";
+			case 49 -> "Meşale bitince karanlıktaki hırıltı korkutucu, tedbirli olacağız.";
+			default -> "2 kalp ve sıfır açlık çok kritik, eve ulaşmamız lazım.";
+		};
+	}
+
+	// ─── Simulated Personality Replies (Cliché-Free, Diverse Praise, 2-Phase SAD) ────
 
 	private static String getExcitedReplik(int id) {
 		return switch (id) {
 			case 1 -> "YOO BE! 8 elmas birden mi?! LAN zengin olduk, hemen kır şunları!";
-			case 2 -> "Ağlıyorum şu an! İlk Netherite külçemiz hayırlı olsun, efsane duruyor!";
-			case 3 -> "BİTTİ LAN! Ejderha patladı, XP'lere bak yağmur gibi yağıyor YOO!";
-			case 4 -> "ELYTRA MI O! Uçuyoruz LAN, kanatlara bak gerçek mi bu ya!";
-			case 5 -> "Oha sandığa bak! Hem desen hem Netherite, hazine bulduk YOO BE!";
+			case 2 -> "Ağlıyorum şu an! İlk Netherite külçemiz hayırlı olsun, efsane duruyor.";
+			case 3 -> "Ejderha düştü! Gökyüzünden yağan XP kürelerine bak, harika bir savaş çıkardın!";
+			case 4 -> "Elytra elimizde! Hadi yüksek bir dağa çıkıp gökyüzünde süzülelim mi?";
+			case 5 -> "Sandıktan hem desen hem Netherite çıktı! Bugüne kadarki en şanslı hazinemiz bu.";
 			case 6 -> "Woodland Mansion kapısındayız! İnanılmaz büyük burası, içeri dalalım mı?!";
-			default -> "Wither düştü LAN! Nether Yıldızı bizim, efsane bir savaş oldu!";
+			default -> "Wither boss son vuruşla yıkıldı! Nether Yıldızı bizim, ne savaş oldu ama!";
 		};
 	}
 
 	private static String getScaredReplik(int id) {
 		return switch (id) {
-			case 8 -> "dur dur dur... karanlıkta ne sesleri o ya, hemen meşale koyalım!";
+			case 8 -> "dur dur dur... karanlıkta ne sesleri o ya, hemen meşale koyalım.";
 			case 9 -> "Canımız 1 kalp! Koş koş arkaya bakma, öleceğiz şimdi!";
 			case 10 -> "Tıssss ne o ne o?! Creeper var kaç LAN patlayacak!";
 			case 11 -> "Yüreğim ağzıma geldi! Ucu ucuna tuttun lavın kenarını, dur biraz soluklanalım.";
@@ -326,24 +424,26 @@ public class CompanionScenarioTester {
 	}
 
 	private static String getSadReplik(int id) {
+		// Priority #4: 2-phase empathetic structure (Phase 1: acknowledge pain without solutions; Phase 2: gentle comfort)
 		return switch (id) {
-			case 15 -> "Olur böyle şeyler ya... canın sağ olsun, yeniden toplarız elmasları üzülme.";
-			case 16 -> "Köpeğimiz gitti... ben de çok üzüldüm, harika bir yol arkadaşıydı.";
-			case 17 -> "Tüm zırhlar lavda eridi gitti... geçecek, baştan dizeriz takma kafana.";
-			case 18 -> "Ben yanındayım ya... moralini bozma, o farmı birlikte yeniden yaparız.";
-			case 19 -> "Ev yanıyor... tüh ya o kadar emek vermiştin, gel yağmur yağdıralım sönsün.";
-			default -> "Portal gitti ghast yüzünden... sakin ol, çakmak taşını bulup açarız yine.";
+			case 15 -> "O kadar emek verip topladığın elmasların lavda yanması çok üzücü... Yanındayım, moralini bozma birlikte yeniden dizeriz.";
+			case 16 -> "Köpeğimizin gitmesine içim parçalandı... O gerçekten harika bir sadık dosttu, hatırasını hep yaşatacağız.";
+			case 17 -> "Nether kalesinde tüm zırhları kaybetmek çok ağır bir his... Canın sağ olsun, sen iyi ol yeter baştan toparlarız.";
+			case 18 -> "Saatlerce uğraştığın demir çiftliğinin patlaması ne kadar can sıkıcı biliyorum... Dinlen biraz, sonra birlikte onarırız.";
+			case 19 -> "Evin çatısının alevler içinde kalması çok sarsıcı bir durum... Üzülme dostum, burayı eskisinden de güzel inşa edeceğiz.";
+			default -> "Portalın kapanmasıyla Nether'da tek başına mahsur kalman çok yorucu... Sakın pes etme, çakmak taşı bulup evin yolunu açacağız.";
 		};
 	}
 
 	private static String getProudReplik(int id) {
+		// Priority #3: Diverse praise (architectural, engineering, courage/skill) without opening clichés
 		return switch (id) {
-			case 21 -> "Lan ciddi mi bu şato?! Resmen kraliyet sarayı olmuş, bayıldım!";
-			case 22 -> "Bu nasıl bir kızıltaş devresi ya? Ben bunu hayatta yapamazdım, helal olsun!";
-			case 23 -> "Lavların üstünden nasıl geçtin öyle?! Tek seferde bitirdin parkuru efsanesin!";
-			case 24 -> "Akvaryumlu su altı üssü mü? Hayatımda gördüğüm en iyi tasarım bu!";
-			case 25 -> "Köyü tek başına kurtardın! Gerçek bir kahramansın, köylüler sana dua etsin.";
-			default -> "2000 blokluk buz otoyolu mu? Saniyeler içinde gidip geleceğiz, harika iş!";
+			case 21 -> "Dağ zirvesine kurduğun bu şatonun simetrisi ve taş işçiliği muhteşem! Gerçek bir mimari estetiğe sahipsin.";
+			case 22 -> "Tasarladığın bu kızıltaş asansörü kusursuz çalışıyor. Mantık kurgun ve mühendislik zekan gerçekten takdire şayan!";
+			case 23 -> "Lavların üstündeki o zorlu parkuru hiç düşmeden geçtin! Reflekslerin ve cesaretin inanılmaz seviyede.";
+			case 24 -> "Cam kubbeli su altı üssünün mercanlarla uyumu harika görünüyor. Tasarım vizyonun resmen büyüleyici!";
+			case 25 -> "Köyü tek başına savunarak tüm köylüleri kurtardın! Kararlılığın ve savaş becerinle gerçek bir kahramansın.";
+			default -> "2000 blokluk buz otoyolu sayesinde ulaşımımız saniyeler sürecek. Bu büyük sabır ve emek için helal olsun!";
 		};
 	}
 
@@ -351,20 +451,20 @@ public class CompanionScenarioTester {
 		return switch (id) {
 			case 27 -> "Heeey... orada mısın? Uyuyakaldım ben burada seni beklerken ya.";
 			case 28 -> "Saatlerdir taş kazıyoruz... tünel bitti mi artık, uykum geldi.";
-			case 29 -> "Yağmur ne zaman duracak ya... camdan bakmaktan içim şişti.";
-			case 30 -> "Buğdayların büyümesini izlemek boya kurumasını izlemek gibi... hadi gidelim.";
-			case 31 -> "Ben de çok sıkıldım... gel gidip hiç gitmediğimiz bir mağarayı patlatalım.";
+			case 29 -> "Yağmur ne zaman duracak... camdan bakmaktan içim şişti.";
+			case 30 -> "Buğdayların büyümesini izlemek boya kurumasını izlemek gibi, hadi gidelim.";
+			case 31 -> "Ben de çok sıkıldım... gel gidip hiç gitmediğimiz bir mağarayı patlatalım mı?";
 			default -> "10 dakikadır balık vurmadı oltaya... balıklar da uyudu galiba.";
 		};
 	}
 
 	private static String getFrustratedReplik(int id) {
 		return switch (id) {
-			case 33 -> "Yine mi LAN aynı boşluğa düştün? Üç oldu bu ama hadi bir şans daha.";
-			case 34 -> "Sana uyuyalım demedim mi?! Phantomlar tepemize üşüştü işte kafayı yiyeceğim.";
-			case 35 -> "Şu sandıkları bir düzenle artık ya, ne ararsan rastgele yerde duruyor!";
+			case 33 -> "Yine mi aynı boşluğa düştün? Üç oldu bu ama hadi bir şans daha verelim.";
+			case 34 -> "Sana uyuyalım demedim mi... Phantomlar tepemize üşüştü işte kafayı yiyeceğim.";
+			case 35 -> "Şu sandıkları bir düzenle artık, ne ararsan rastgele yerde duruyor!";
 			case 36 -> "Kazma kırıldı işte! O kadar dedim tamir et diye, dinlemiyorsun ki beni.";
-			case 37 -> "Çakmak yerine lavla portal mı yakılır?! Evin tabanı yandı, mahvettin ortalığı!";
+			case 37 -> "Çakmak yerine lavla portal mı yakılır?! Evin tabanını yaktın, mahvettin ortalığı.";
 			default -> "15 dakikadır aynı ağacın etrafındayız... bir koordinata baksaydık keşke.";
 		};
 	}
@@ -372,19 +472,19 @@ public class CompanionScenarioTester {
 	private static String getCuriousReplik(int id) {
 		return switch (id) {
 			case 39 -> "Bu karanlık sculk blokları ne böyle? Hiç görmedim daha önce, dikkat et.";
-			case 40 -> "Bu kırık diskte ne çalıyor acaba? Gramofona takıp dinleyelim mi hemen?!";
-			case 41 -> "Nether Yıldızı çok garip parlıyor... bununla süper bir güç işareti falan mı yapılır?";
+			case 40 -> "Bu kırık diskte ne çalıyor acaba? Gramofona takıp dinleyelim mi hemen?";
+			case 41 -> "Nether Yıldızı çok garip parlıyor... bununla süper bir güç işareti mi yapılır?";
 			case 42 -> "Okyanusun dibindeki batık gemiye bak! İçinde hazine haritası var mıdır acaba?";
 			case 43 -> "Mor ametistler nasıl parlıyor öyle! Sesleri de rüzgar çanı gibi çok güzel.";
-			default -> "Haritanın ucu mu? Ben de çok merak ettim, gel bir tekne yapıp açılalım!";
+			default -> "Haritanın ucu mu? Ben de çok merak ettim, gel bir tekne yapıp açılalım.";
 		};
 	}
 
 	private static String getTenseReplik(int id) {
 		return switch (id) {
-			case 45 -> "şşşt... yünlerin üstünden ayrılma, fısıltıyla konuş warden duyacak.";
+			case 45 -> "şşşt... yünlerin üstünden ayrılma, fısıltıyla konuş warden duyabilir.";
 			case 46 -> "Blazeler uçuşuyor... kalkanını kaldır, alev topu gelirse biteriz.";
-			case 47 -> "Endermanlerin gözüne sakın bakma... kafamızı eğip köprüye devam edelim.";
+			case 47 -> "Endermanlerin gözüne sakın bakma, kafamızı eğip köprüye devam edelim.";
 			case 48 -> "Piglin Brute orda duruyor... nefesini tut, altın giysen de saldırır bu.";
 			case 49 -> "Meşalemiz kalmadı... arkadaki hırıltıyı duyuyor musun, çok dikkatli ol.";
 			default -> "2 kalbimiz kaldı... koş koş hiç arkana bakma eve çok az kaldı!";
