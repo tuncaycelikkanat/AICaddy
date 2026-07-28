@@ -23,9 +23,38 @@ public class CompanionDebugLogger {
 		return enabled;
 	}
 
+	private static final java.io.File LOGS_DIR = new java.io.File("logs");
+	private static final java.io.File JSONL_FILE = new java.io.File(LOGS_DIR, "ai_caddy_events.jsonl");
+
+	public static void logJsonl(String type, ServerPlayer player, String event, String key, String val) {
+		java.util.concurrent.CompletableFuture.runAsync(() -> {
+			try {
+				if (!LOGS_DIR.exists()) {
+					LOGS_DIR.mkdirs();
+				}
+				com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+				obj.addProperty("timestamp", java.time.Instant.now().toString());
+				obj.addProperty("type", type);
+				obj.addProperty("player", player != null ? player.getScoreboardName() : "SYSTEM");
+				obj.addProperty("event", event);
+				if (key != null && !key.isEmpty()) {
+					obj.addProperty(key, val);
+				}
+				String line = obj.toString() + "\n";
+				java.nio.file.Files.writeString(
+						JSONL_FILE.toPath(),
+						line,
+						java.nio.file.StandardOpenOption.CREATE,
+						java.nio.file.StandardOpenOption.APPEND
+				);
+			} catch (Exception ignored) {}
+		});
+	}
+
 	// ── Mood Events ────────────────────────────────────────────────────────────
 
 	public static void logMoodChange(ServerPlayer player, MoodTrigger trigger, CompanionMoodState newMood) {
+		logJsonl("MOOD_CHANGE", player, trigger.name(), "new_mood", newMood.getLabel());
 		if (!enabled) return;
 		broadcast(player,
 			"§8[DEBUG] §6🎭 MOOD DEĞİŞTİ§r | Tetik: §e" + trigger.name()
@@ -34,6 +63,7 @@ public class CompanionDebugLogger {
 	}
 
 	public static void logEventDetected(ServerPlayer player, String eventName, String detail) {
+		logJsonl("EVENT_DETECTED", player, eventName, "detail", detail);
 		if (!enabled) return;
 		broadcast(player,
 			"§8[DEBUG] §a⚡ OLAY§r | §e" + eventName + "§r: " + detail
@@ -48,6 +78,7 @@ public class CompanionDebugLogger {
 	}
 
 	public static void logProactiveSpeechFired(ServerPlayer player, String eventKey) {
+		logJsonl("PROACTIVE_SPEECH", player, eventKey, "", "");
 		if (!enabled) return;
 		broadcast(player,
 			"§8[DEBUG] §d🗣 PROAKTİF KONUŞMA§r | Tetikleyen: §e" + eventKey
