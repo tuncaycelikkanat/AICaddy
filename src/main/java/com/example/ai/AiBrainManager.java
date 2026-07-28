@@ -214,7 +214,11 @@ public class AiBrainManager {
 						Component.literal("§e🐱 [Kedi]: §f" + message),
 						false
 				);
-				com.example.ai.tts.TtsManager.speakTurkishAsync(player, message);
+				// GroqAiProvider streams live TTS sentence-by-sentence during generation;
+				// only invoke full TTS after broadcast for non-streaming providers.
+				if (!getActiveProvider().getId().equals("groq")) {
+					com.example.ai.tts.TtsManager.speakTurkishAsync(player, message);
+				}
 			});
 		}
 	}

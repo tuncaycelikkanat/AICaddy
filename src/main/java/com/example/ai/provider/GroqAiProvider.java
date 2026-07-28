@@ -70,7 +70,6 @@ public class GroqAiProvider implements AiProvider {
 		systemMsg.addProperty("content", systemPrompt);
 		messages.add(systemMsg);
 
-		// Only add user message if it's non-empty (proactive speech sends empty string)
 		if (userMessage != null && !userMessage.isBlank()) {
 			JsonObject userMsg = new JsonObject();
 			userMsg.addProperty("role", "user");
@@ -86,6 +85,7 @@ public class GroqAiProvider implements AiProvider {
 		requestBody.add("messages", messages);
 		requestBody.addProperty("max_tokens", 220);
 		requestBody.addProperty("temperature", 0.75);
+		requestBody.addProperty("stream", true);
 		requestBody.add("response_format", responseFormat);
 
 		HttpRequest request = HttpRequest.newBuilder()
@@ -95,13 +95,14 @@ public class GroqAiProvider implements AiProvider {
 				.POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
 				.build();
 
-		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
-						ExampleMod.LOGGER.error("Groq API hata kodu {}: {}", response.statusCode(), response.body());
+						String errBody = response.body().reduce("", (a, b) -> a + "\n" + b);
+						ExampleMod.LOGGER.error("Groq API hata kodu {}: {}", response.statusCode(), errBody);
 						return "Miyav... (Groq bağlantı hatası: " + response.statusCode() + ")";
 					}
-					return extractFinalReplik(response.body());
+					return processSseStream(response.body());
 				})
 				.exceptionally(ex -> {
 					ExampleMod.LOGGER.error("Groq API isteği başarısız.", ex);
@@ -110,31 +111,67 @@ public class GroqAiProvider implements AiProvider {
 	}
 
 	/**
-	 * Parses the Groq response JSON and extracts "final_replik" if present,
-	 * otherwise falls back to the raw content string.
+	 * Processes the Groq Server-Sent Events (SSE) line by line, extracting sentences
+	 * on the fly and dispatching them to TtsManager immediately for ultra-low latency.
 	 */
-	private String extractFinalReplik(String json) {
-		try {
-			JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-			JsonArray choices = root.getAsJsonArray("choices");
-			if (choices != null && !choices.isEmpty()) {
-				JsonObject message = choices.get(0).getAsJsonObject().getAsJsonObject("message");
-				if (message != null && message.has("content")) {
-					String raw = message.get("content").getAsString().trim();
-					try {
-						JsonObject structured = JsonParser.parseString(raw).getAsJsonObject();
-						if (structured.has("final_replik")) {
-							return structured.get("final_replik").getAsString().trim();
+	private String processSseStream(java.util.stream.Stream<String> lines) {
+		StringBuilder accumulatedJson = new StringBuilder();
+		int[] spokenCount = {0};
+		boolean[] isFirst = {true};
+
+		lines.forEach(line -> {
+			String trimmed = line.trim();
+			if (trimmed.startsWith("data: ")) {
+				String data = trimmed.substring(6).trim();
+				if (data.equals("[DONE]") || data.isEmpty()) return;
+				try {
+					JsonObject chunk = JsonParser.parseString(data).getAsJsonObject();
+					JsonArray choices = chunk.getAsJsonArray("choices");
+					if (choices != null && !choices.isEmpty()) {
+						JsonObject delta = choices.get(0).getAsJsonObject().getAsJsonObject("delta");
+						if (delta != null && delta.has("content")) {
+							String contentChunk = delta.get("content").getAsString();
+							accumulatedJson.append(contentChunk);
+
+							// Check if new completed sentences have formed in "final_replik"
+							String currentReplik = PartialJsonExtractor.extractPartialReplik(accumulatedJson.toString());
+							java.util.List<String> sentences = PartialJsonExtractor.extractCompletedSentences(currentReplik);
+
+							while (spokenCount[0] < sentences.size()) {
+								String sentenceToSpeak = sentences.get(spokenCount[0]);
+								com.example.ai.tts.TtsManager.speakSentenceAsync(null, sentenceToSpeak, isFirst[0]);
+								spokenCount[0]++;
+								isFirst[0] = false;
+							}
 						}
-					} catch (Exception ignored) {
-						// Model didn't return JSON — use raw text directly
 					}
-					return raw;
+				} catch (Exception ignored) {
+					// Incomplete JSON chunk in SSE
 				}
 			}
-		} catch (Exception e) {
-			ExampleMod.LOGGER.error("Groq yanıtı ayrıştırılamadı.", e);
+		});
+
+		String fullReplik = PartialJsonExtractor.extractPartialReplik(accumulatedJson.toString());
+		if (fullReplik.isEmpty()) {
+			// Fallback if model didn't return proper final_replik schema
+			fullReplik = accumulatedJson.toString().trim();
 		}
-		return "Miyav... (yanıt anlaşılamadı)";
+
+		// Check if there is any remaining text that wasn't spoken by sentence endings
+		java.util.List<String> allSentences = PartialJsonExtractor.extractCompletedSentences(fullReplik);
+		if (allSentences.isEmpty() && !fullReplik.isBlank()) {
+			com.example.ai.tts.TtsManager.speakSentenceAsync(null, fullReplik, isFirst[0]);
+		} else if (!allSentences.isEmpty()) {
+			String lastSpoken = allSentences.get(allSentences.size() - 1);
+			int lastIdx = fullReplik.lastIndexOf(lastSpoken);
+			if (lastIdx >= 0) {
+				String remainder = fullReplik.substring(lastIdx + lastSpoken.length()).trim();
+				if (!remainder.isEmpty()) {
+					com.example.ai.tts.TtsManager.speakSentenceAsync(null, remainder, isFirst[0]);
+				}
+			}
+		}
+
+		return fullReplik;
 	}
 }

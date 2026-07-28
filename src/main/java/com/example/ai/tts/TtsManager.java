@@ -35,29 +35,38 @@ public class TtsManager {
 	}
 
 	/**
+	 * Speaks a single sentence immediately via the FIFO single-thread TTS executor.
+	 * Used by streaming LLM responses so the first sentence plays while the second is still generating.
+	 */
+	public static void speakSentenceAsync(ServerPlayer player, String sentence, boolean isFirstSentence) {
+		if (!ttsEnabled || sentence == null || sentence.isBlank()) return;
+
+		if (isFirstSentence) {
+			playCatSound(player);
+		}
+
+		final String clean = cleanTextForTts(sentence);
+		if (clean.isEmpty()) return;
+
+		TTS_EXECUTOR.submit(() -> {
+			try {
+				if (!speakEdgeTts(clean)) {
+					String elevenKey = getElevenLabsApiKey();
+					if (!elevenKey.isEmpty() && speakElevenLabs(clean, elevenKey)) return;
+					speakStreamElements(clean);
+				}
+			} catch (Exception e) {
+				ExampleMod.LOGGER.error("Streaming TTS oynatma hatası: {}", e.getMessage());
+			}
+		});
+	}
+
+	/**
 	 * Speaks the given text asynchronously using Microsoft Edge TTS (Emel Neural).
 	 * Falls back to ElevenLabs → StreamElements → Google TTS on failure.
 	 */
 	public static void speakTurkishAsync(ServerPlayer player, String text) {
-		if (!ttsEnabled || text == null || text.isBlank()) return;
-
-		// Play cute in-game cat sound
-		playCatSound(player);
-
-		final String clean = cleanTextForTts(text);
-		TTS_EXECUTOR.submit(() -> {
-			try {
-				if (!speakEdgeTts(clean)) {
-					// Fallback to ElevenLabs
-					String elevenKey = getElevenLabsApiKey();
-					if (!elevenKey.isEmpty() && speakElevenLabs(clean, elevenKey)) return;
-					// Final fallback: StreamElements Filiz
-					speakStreamElements(clean);
-				}
-			} catch (Exception e) {
-				ExampleMod.LOGGER.error("TTS oynatma hatası: {}", e.getMessage());
-			}
-		});
+		speakSentenceAsync(player, text, true);
 	}
 
 	// ── Microsoft Edge TTS (Primary) ──────────────────────────────────────────
@@ -212,16 +221,22 @@ public class TtsManager {
 	}
 
 	private static void playCatSound(ServerPlayer player) {
-		if (player == null || ExampleMod.SERVER_INSTANCE == null) return;
+		if (ExampleMod.SERVER_INSTANCE == null) return;
 		ExampleMod.SERVER_INSTANCE.execute(() -> {
 			try {
-				player.level().playSound(
-						null,
-						player.blockPosition(),
-						SoundEvents.CAT_PURREOW,
-						SoundSource.NEUTRAL,
-						1.0f, 1.25f
-				);
+				ServerPlayer target = player;
+				if (target == null && !ExampleMod.SERVER_INSTANCE.getPlayerList().getPlayers().isEmpty()) {
+					target = ExampleMod.SERVER_INSTANCE.getPlayerList().getPlayers().get(0);
+				}
+				if (target != null) {
+					target.level().playSound(
+							null,
+							target.blockPosition(),
+							SoundEvents.CAT_PURREOW,
+							SoundSource.NEUTRAL,
+							1.0f, 1.25f
+					);
+				}
 			} catch (Exception ignored) {}
 		});
 	}
