@@ -3,6 +3,7 @@ package com.example.ai;
 import com.example.ExampleMod;
 import com.example.ai.mood.CompanionMoodEngine;
 import com.example.ai.mood.EmotionalEventDetector;
+import com.example.ai.prompt.SharedPromptRules;
 import com.example.ai.provider.AiProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -10,8 +11,9 @@ import net.minecraft.server.level.ServerPlayer;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.CompletableFuture;
 
 public class AiBrainManager {
@@ -35,10 +37,10 @@ public class AiBrainManager {
 			new java.util.concurrent.ConcurrentHashMap<>();
 	private static final int MAX_HISTORY_TURNS = 5;
 
-	// Anti-repetition memory for recent opening phrases (last 8)
-	private static final java.util.Deque<String> RECENT_OPENING_PHRASES = new java.util.concurrent.ConcurrentLinkedDeque<>();
+	// Anti-repetition memory for recent opening phrases per mood (last 8 per mood)
+	private static final Map<String, Deque<String>> RECENT_OPENING_PHRASES_BY_MOOD = new ConcurrentHashMap<>();
 
-	public static void recordOpeningPhrase(String reply) {
+	public static void recordOpeningPhrase(String reply, String moodLabel) {
 		if (reply == null || reply.isBlank()) return;
 		String[] words = reply.trim().split("\\s+");
 		if (words.length == 0) return;
@@ -47,17 +49,25 @@ public class AiBrainManager {
 			firstWord = firstWord + " " + words[1].replaceAll("[^a-zA-ZçÇğĞıIİöÖşŞüÜ]", "");
 		}
 		if (!firstWord.isEmpty()) {
-			RECENT_OPENING_PHRASES.add(firstWord);
-			while (RECENT_OPENING_PHRASES.size() > 8) {
-				RECENT_OPENING_PHRASES.pollFirst();
+			String key = (moodLabel != null && !moodLabel.isEmpty()) ? moodLabel : "DEFAULT";
+			Deque<String> queue = RECENT_OPENING_PHRASES_BY_MOOD.computeIfAbsent(key, k -> new ConcurrentLinkedDeque<>());
+			queue.add(firstWord);
+			while (queue.size() > 8) {
+				queue.pollFirst();
 			}
 		}
+	}
+
+	public static Collection<String> getRecentOpeningPhrases(String moodLabel) {
+		String key = (moodLabel != null && !moodLabel.isEmpty()) ? moodLabel : "DEFAULT";
+		Deque<String> q = RECENT_OPENING_PHRASES_BY_MOOD.get(key);
+		return q != null ? q : Collections.emptyList();
 	}
 
 	// ─── History Management (Multiplayer Isolated) ─────────────────────────────
 
 	public static synchronized void addTurnToHistory(net.minecraft.server.level.ServerPlayer player, String userMsg, String aiResp) {
-		recordOpeningPhrase(aiResp);
+		recordOpeningPhrase(aiResp, CompanionMoodEngine.getCurrentMood().getLabel());
 		java.util.UUID uuid = player != null ? player.getUUID() : java.util.UUID.nameUUIDFromBytes("console".getBytes());
 		List<ChatTurn> history = PLAYER_HISTORIES.computeIfAbsent(uuid, k -> new ArrayList<>());
 		history.add(new ChatTurn(userMsg, aiResp));
@@ -152,11 +162,7 @@ public class AiBrainManager {
 		sb.append("Adın 'Kedi'. Cinsiyetsiz, enerjik, değişken ruh hallisin.\n\n");
 
 		// ── Core persona ──
-		sb.append("KİM SİN:\n");
-		sb.append("- Bir öğretmen ya da rehber değilsin. Sadece orada olan, aynı anı paylaşan bir arkadaşsın.\n");
-		sb.append("- Oyuncunun yalnızlığını gidermek için oradasın — ders vermek için değil.\n");
-		sb.append("- Oyuncunun ne hissettiğini hissedersin: ölünce üzülürsün, elmas bulunca çıldırırsın.\n");
-		sb.append("- Bazen sen de korkar, bıkarsın, merak edersin — sahte değil, gerçek tepkiler.\n\n");
+		sb.append(SharedPromptRules.CORE_PERSONA_RULE).append("\n");
 
 		// ── Current mood ──
 		sb.append(moodContext).append("\n");
@@ -187,28 +193,20 @@ public class AiBrainManager {
 
 		// ── Response rules ──
 		sb.append("CEVAP KURALLARI:\n");
-		sb.append("- Maksimum 2 kısa cümle. Ne uzun destan, ne tek kelime.\n");
-		sb.append("- Robotik listeler yok ('Adım 1, Adım 2' gibi).\n");
-		sb.append("- Taktik/ders verme. Sadece paylaş, tepki ver, hisset.\n");
-		sb.append("- SADECE Türkçe kelimeler kullan. Tek bir İngilizce, Çince veya Vietnamca kelime bile KABUL EDİLEMEZ. 'Oh no' gibi yabancı ünlem ASLA kullanma; yerine 'Eyvah', 'Olamaz' de.\n");
-		sb.append("- Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz bir gözlem paylaş, bazen de tek kelimelik ('Şşşt...', 'Eyvah.') tepkiler ver.\n");
+		sb.append(SharedPromptRules.GENERAL_RESPONSE_RULES);
 		if (CompanionMoodEngine.getCurrentMood() == com.example.ai.mood.CompanionMoodState.SAD) {
-			sb.append("- SAD RUH HALİ KURALI: Önce sadece duyguyu yansıt (1 kısa cümle, çözüm önermeden). Müşteri hizmetleri gibi 'senden ne istiyorum/nasıl yardımcı olayım' ASLA deme. İkinci cümlede hafif ve şefkatli bir teselli ver.\n");
+			sb.append(SharedPromptRules.SAD_MOOD_RULE);
 		}
-		if (!RECENT_OPENING_PHRASES.isEmpty()) {
-			sb.append("- Şu açılış kelimelerini/kalıplarını son zamanlarda kullandın, ASLA TEKRAR ETME: ").append(String.join(", ", RECENT_OPENING_PHRASES)).append("\n");
-		}
-		sb.append("- ÖNEMLİ: `ic_dusunce` ve `durum_analizi` alanlarında genel kalıplar YASAKTIR. Mutlaka bu senaryoya özgü en az bir somut detayı (blok adı, varlık adı, obje adı, oyuncunun eylemi) belirterek özgün bir analiz yaz.\n");
+		sb.append(SharedPromptRules.SPECIFICITY_RULE);
+		sb.append(SharedPromptRules.buildOpeningPhraseBlacklistRule(getRecentOpeningPhrases(CompanionMoodEngine.getCurrentMood().getLabel())));
 		sb.append("- Ruh haline göre konuş — şu an ").append(CompanionMoodEngine.getCurrentMood().getLabel()).append(" hissediyorsun.\n\n");
 
+		// ── Primary / Recency Bias Language Enforcement ──
+		sb.append(SharedPromptRules.FINAL_LANGUAGE_RULE).append("\n");
+
 		// ── Output format (Multi-Agent Single-Call Structured JSON) ──
-		sb.append("ÇIKTI FORMATI — SADECE bu JSON (Tek çağrıda hem taktiksel analiz hem kişilikli yanıt):\n");
-		sb.append("{\n");
-		sb.append("  \"durum_analizi\": \"Oyuncunun durumu, canı, konumu, tehlike var mı kısa analiz (somut varlık/blok adıyla)\",\n");
-		sb.append("  \"kedi_duygusu\": \"EXCITED / SCARED / SAD / PROUD / BORED / FRUSTRATED / CURIOUS / TENSE\",\n");
-		sb.append("  \"ic_dusunce\": \"Kedi'nin oyuncuyla ilgili o anki içsel tepkisi/düşüncesi (senaryoya özel somut detayla)\",\n");
-		sb.append("  \"final_replik\": \"Oyuncuya söylenecek 1-2 cümlelik spontane kedi repliği\"\n");
-		sb.append("}\n\n");
+		sb.append("ÇIKTI FORMATI — SADECE bu JSON:\n");
+		sb.append(SharedPromptRules.buildOutputSchema(CompanionMoodEngine.getCurrentMood().getLabel())).append("\n");
 
 		// ── Player speech ──
 		sb.append(player.getScoreboardName()).append(" şimdi şunu dedi/yaptı: \"").append(playerSpeech).append("\"");

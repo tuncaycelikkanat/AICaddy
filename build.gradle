@@ -123,3 +123,10 @@ task runMultiModelTest(type: JavaExec) {
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.example.ai.test.MultiModelScenarioTester'
 }
+
+task runGemini50Test(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the 50 Minecraft scenario AI Companion test using Gemini (Google 1.5-Pro Persona) and generates report'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.Gemini50ScenarioTester'
+}

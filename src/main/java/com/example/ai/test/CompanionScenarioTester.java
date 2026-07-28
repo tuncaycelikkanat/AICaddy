@@ -12,9 +12,12 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.time.Duration;
+import com.example.ai.prompt.SharedPromptRules;
+
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * Executes 50 distinct Minecraft gameplay scenarios across 8 emotional moods
@@ -150,6 +153,7 @@ public class CompanionScenarioTester {
 					durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
 					icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
 					finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik, sc.moodLabel(), sc.id());
+					recordOpeningPhrase(finalReplik, sc.moodLabel());
 
 					return new TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
 							durumAnalizi, kediDuygusu, icDusunce, finalReplik, duration, true);
@@ -172,6 +176,7 @@ public class CompanionScenarioTester {
 		durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
 		icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
 		finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik, sc.moodLabel(), sc.id());
+		recordOpeningPhrase(finalReplik, sc.moodLabel());
 
 		return new TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
 				durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true);
@@ -190,21 +195,44 @@ public class CompanionScenarioTester {
 		};
 	}
 
+	private static final Map<String, Deque<String>> RECENT_OPENING_PHRASES_BY_MOOD = new ConcurrentHashMap<>();
+
+	public static void recordOpeningPhrase(String reply, String moodLabel) {
+		if (reply == null || reply.isBlank()) return;
+		String[] words = reply.trim().split("\\s+");
+		if (words.length == 0) return;
+		String firstWord = words[0].replaceAll("[^a-zA-ZçÇğĞıIİöÖşŞüÜ]", "");
+		if (words.length > 1 && (firstWord.equalsIgnoreCase("Vay") || firstWord.equalsIgnoreCase("Aman") || firstWord.equalsIgnoreCase("Yine"))) {
+			firstWord = firstWord + " " + words[1].replaceAll("[^a-zA-ZçÇğĞıIİöÖşŞüÜ]", "");
+		}
+		if (!firstWord.isEmpty()) {
+			String key = (moodLabel != null && !moodLabel.isEmpty()) ? moodLabel : "DEFAULT";
+			Deque<String> queue = RECENT_OPENING_PHRASES_BY_MOOD.computeIfAbsent(key, k -> new ConcurrentLinkedDeque<>());
+			queue.add(firstWord);
+			while (queue.size() > 8) {
+				queue.pollFirst();
+			}
+		}
+	}
+
+	public static Collection<String> getRecentOpeningPhrases(String moodLabel) {
+		String key = (moodLabel != null && !moodLabel.isEmpty()) ? moodLabel : "DEFAULT";
+		Deque<String> q = RECENT_OPENING_PHRASES_BY_MOOD.get(key);
+		return q != null ? q : Collections.emptyList();
+	}
+
 	public static String buildSystemPrompt(Scenario sc) {
 		return "Sen Minecraft oynayan bir oyuncunun en yakın arkadaşı 'Kedi'sin. " +
 				"Şu anki ruh halin: " + sc.moodLabel() + " (" + sc.expectedTone() + "). " +
 				"Öğretmen gibi davranma, ders verme. Sadece 1-2 cümleyle spontane ve doğal Türkçe tepki ver.\n" +
 				"KURALLAR:\n" +
-				"- SADECE Türkçe kelimeler kullan. Tek bir İngilizce, Çince veya Vietnamca kelime bile KABUL EDİLEMEZ. 'Oh no' yerine 'Eyvah', 'Olamaz' de.\n" +
-				"- Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz gözlem paylaş.\n" +
-				(sc.moodLabel().equals("SAD") ? "- SAD RUH HALİ: Önce sadece oyuncunun duygusunu ve acısını onayla/yansıt (çözüm önermeden 1 kısa cümle). Müşteri hizmetleri gibi 'senden ne istiyorum/nasıl yardımcı olayım' ASLA deme. İkinci cümlede hafif bir teselli ver.\n" : "") +
-				"- Çıktıyı MUTLAKA geçerli bir JSON formatında şu şemada ver:\n" +
-				"{\n" +
-				"  \"durum_analizi\": \"Sahneye/senaryoya özgü somut varlık veya blok adı belirten 1 cümlelik analiz\",\n" +
-				"  \"kedi_duygusu\": \"" + sc.moodLabel() + "\",\n" +
-				"  \"ic_dusunce\": \"Senaryoya özgü somut varlık veya blok adını belirten 1 cümlelik kedi düşüncesi\",\n" +
-				"  \"final_replik\": \"Kedi'nin oyuncuya söyleyeceği seslendirilecek doğal Türkçe replik\"\n" +
-				"}";
+				SharedPromptRules.GENERAL_RESPONSE_RULES +
+				(sc.moodLabel().equals("SAD") ? SharedPromptRules.SAD_MOOD_RULE : "") +
+				SharedPromptRules.SPECIFICITY_RULE +
+				SharedPromptRules.buildOpeningPhraseBlacklistRule(getRecentOpeningPhrases(sc.moodLabel())) +
+				SharedPromptRules.FINAL_LANGUAGE_RULE + "\n" +
+				"ÇIKTI FORMATI — SADECE bu JSON:\n" +
+				SharedPromptRules.buildOutputSchema(sc.moodLabel());
 	}
 
 	private static String readGroqApiKey() {
