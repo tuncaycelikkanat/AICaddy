@@ -178,6 +178,7 @@ public class AiBrainManager {
 							Component.literal("§e🐱 [AI Kedi (" + getActiveProvider().getId().toUpperCase() + " | §6" + currentMode.name() + "§e)]: §f" + aiResponse),
 							false
 					);
+					com.example.ai.tts.TtsManager.speakTurkishAsync(player, aiResponse);
 				});
 			}
 		});

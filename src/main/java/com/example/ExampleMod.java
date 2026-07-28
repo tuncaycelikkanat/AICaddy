@@ -58,6 +58,18 @@ public class ExampleMod implements ModInitializer {
 						context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§e🐱 [AI Kedi]: §fGeçmiş konuşmalarımızı unuttum, yepyeni bir sayfayla hazırım!"), false);
 						return 1;
 					}))
+					.then(net.minecraft.commands.Commands.literal("ses")
+							.then(net.minecraft.commands.Commands.literal("aç").executes(context -> {
+								com.example.ai.tts.TtsManager.setTtsEnabled(true);
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§e🐱 [AI Kedi]: §f🔊 Sesli konuşma açıldı!"), false);
+								return 1;
+							}))
+							.then(net.minecraft.commands.Commands.literal("kapat").executes(context -> {
+								com.example.ai.tts.TtsManager.setTtsEnabled(false);
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§e🐱 [AI Kedi]: §f🔇 Sesli konuşma kapatıldı (sadece yazıyla konuşacağım)."), false);
+								return 1;
+							}))
+					)
 					.then(net.minecraft.commands.Commands.literal("sor")
 							.then(net.minecraft.commands.Commands.argument("mesaj", com.mojang.brigadier.arguments.StringArgumentType.greedyString())
 									.executes(context -> {
