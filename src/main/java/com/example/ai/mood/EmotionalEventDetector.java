@@ -2,6 +2,7 @@ package com.example.ai.mood;
 
 import com.example.ExampleMod;
 import com.example.ai.AiBrainManager;
+import com.example.ai.debug.CompanionDebugLogger;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -98,15 +99,15 @@ public class EmotionalEventDetector {
 		}
 
 		if (!prev && night) {
-			// Just became night
 			wasNight.put(pid, true);
-			CompanionMoodEngine.processTrigger(MoodTrigger.NIGHT_FELL);
+			CompanionDebugLogger.logEventDetected(player, "GECE_OLDU", "isNight() = true");
+			CompanionMoodEngine.processTrigger(MoodTrigger.NIGHT_FELL, player);
 			triggerProactiveSpeech(player, "night_fell",
 				"Gece oldu! Companion spontane korkuyorum tarzında kısa bir şey söylesin, ders verme.");
 		} else if (prev && !night) {
-			// Day came
 			wasNight.put(pid, false);
-			CompanionMoodEngine.processTrigger(MoodTrigger.DAY_CAME);
+			CompanionDebugLogger.logEventDetected(player, "GUN_DOGDU", "isNight() = false");
+			CompanionMoodEngine.processTrigger(MoodTrigger.DAY_CAME, player);
 			triggerProactiveSpeech(player, "day_came",
 				"Gün doğdu! Companion rahatlamış, mutlu, kısa spontane bir şey söylesin.");
 		}
@@ -122,11 +123,12 @@ public class EmotionalEventDetector {
 
 		if (prev == null) return;
 
-		// Crossed below threshold
 		if (ratio < LOW_HEALTH_THRESHOLD && (prev / maxHp) >= LOW_HEALTH_THRESHOLD) {
-			CompanionMoodEngine.processTrigger(MoodTrigger.LOW_HEALTH);
+			CompanionDebugLogger.logEventDetected(player, "DÜŞÜK_CAN",
+				String.format("HP: %.1f / %.1f (%.0f%%)", currentHp, maxHp, ratio * 100));
+			CompanionMoodEngine.processTrigger(MoodTrigger.LOW_HEALTH, player);
 			triggerProactiveSpeech(player, "low_health",
-				"Oyuncunun canı tehlikeli derecede düşük! Companion panikleyerek kısa bir şey söylesin, 'KAN KALMADI LAN' tarzında.");
+				"Oyuncunun canı tehlikeli derecede düşük! Companion panikleyerek kısa bir şey söylesin.");
 		}
 	}
 
@@ -145,10 +147,11 @@ public class EmotionalEventDetector {
 
 		if (!biome.equals(prev)) {
 			lastBiome.put(pid, biome);
-			CompanionMoodEngine.processTrigger(MoodTrigger.NEW_BIOME);
 			String biomeName = biome.replace("minecraft:", "").replace("_", " ");
+			CompanionDebugLogger.logEventDetected(player, "YENİ_BİYOM", prev + " → " + biome);
+			CompanionMoodEngine.processTrigger(MoodTrigger.NEW_BIOME, player);
 			triggerProactiveSpeech(player, "new_biome",
-				"Yeni bir biyoma girdik: '" + biomeName + "'. Companion merakla kısa bir yorum yapsın, 'bu neresi lan' tarzında.");
+				"Yeni bir biyoma girdik: '" + biomeName + "'. Companion merakla kısa bir yorum yapsın.");
 		}
 	}
 
@@ -166,32 +169,37 @@ public class EmotionalEventDetector {
 					MoodTrigger trigger = (item == Items.NETHERITE_INGOT || item == Items.NETHERITE_PICKAXE)
 							? MoodTrigger.FOUND_NETHERITE
 							: MoodTrigger.FOUND_DIAMOND;
-					CompanionMoodEngine.processTrigger(trigger);
 					String itemName = stack.getHoverName().getString();
+					CompanionDebugLogger.logEventDetected(player, "EFSANE_EŞYA", itemName);
+					CompanionMoodEngine.processTrigger(trigger, player);
 					triggerProactiveSpeech(player, "exciting_item_" + itemName,
-						"Oyuncu '" + itemName + "' buldu! Companion çok excited, bağıra çağıra coşsun, 'YOO LAN BU GERÇEK Mİ' tarzında.");
+						"Oyuncu '" + itemName + "' buldu! Companion çok excited, bağıra çağıra coşsun.");
 
 				} else if (CURIOUS_ITEMS.contains(item)) {
-					CompanionMoodEngine.processTrigger(MoodTrigger.NEW_ITEM);
 					String itemName = stack.getHoverName().getString();
+					CompanionDebugLogger.logEventDetected(player, "İLGİNÇ_EŞYA", itemName);
+					CompanionMoodEngine.processTrigger(MoodTrigger.NEW_ITEM, player);
 					triggerProactiveSpeech(player, "curious_item_" + itemName,
-						"Oyuncu ilk kez '" + itemName + "' buldu. Companion meraklı ve heyecanlı, 'bu ne ya hiç görmedim' tarzında.");
+						"Oyuncu ilk kez '" + itemName + "' buldu. Companion meraklı, 'bu ne ya' tarzında.");
 				}
 			}
 		}
 	}
 
 	private static void checkCreeperProximity(ServerPlayer player, String pid) {
-		boolean creeperNear = player.serverLevel()
+		var creepers = player.serverLevel()
 				.getEntitiesOfClass(
 						net.minecraft.world.entity.monster.Creeper.class,
 						player.getBoundingBox().inflate(6.0)
-				).stream().anyMatch(c -> !c.isDeadOrDying());
+				);
+		boolean creeperNear = creepers.stream().anyMatch(c -> !c.isDeadOrDying());
 
 		if (creeperNear) {
-			CompanionMoodEngine.processTrigger(MoodTrigger.CREEPER_NEARBY);
+			CompanionDebugLogger.logEventDetected(player, "CREEPER_YAKIN",
+				creepers.size() + " creeper(s) 6 blok içinde");
+			CompanionMoodEngine.processTrigger(MoodTrigger.CREEPER_NEARBY, player);
 			triggerProactiveSpeech(player, "creeper",
-				"Yakında Creeper var! Companion çok kısa, panikleyen ama komik bir uyarı versin. Maksimum 1 cümle.");
+				"Yakında Creeper var! Companion çok kısa, panikleyen ama komik bir uyarı versin.");
 		}
 	}
 
@@ -228,13 +236,15 @@ public class EmotionalEventDetector {
 	private static void checkIdleness(ServerPlayer player, String pid) {
 		long lastSpoke = lastSpeechTime.getOrDefault(pid, System.currentTimeMillis());
 		long idleMs = System.currentTimeMillis() - lastSpoke;
+		long idleSec = idleMs / 1000;
 
 		if (idleMs >= IDLE_THRESHOLD_MS) {
-			CompanionMoodEngine.processTrigger(MoodTrigger.PLAYER_IDLE);
-			// Reset so it doesn't spam every 2 seconds
+			CompanionDebugLogger.logEventDetected(player, "OYUNCU_SESSIZ",
+				idleSec + "s boşta");
+			CompanionMoodEngine.processTrigger(MoodTrigger.PLAYER_IDLE, player);
 			lastSpeechTime.put(pid, System.currentTimeMillis());
 			triggerProactiveSpeech(player, "idle",
-				"Oyuncu 5 dakikadır sessiz. Companion sıkılmış, 'heeey burada mısın?' tarzında uyandırmaya çalışsın.");
+				"Oyuncu " + idleSec + " saniyedir sessiz. Companion 'heeey burada mısın?' tarzında uyandırsın.");
 		}
 	}
 
@@ -266,16 +276,21 @@ public class EmotionalEventDetector {
 	 * Records a player death event.
 	 */
 	public static void onPlayerDied(ServerPlayer player) {
-		CompanionMoodEngine.processTrigger(MoodTrigger.PLAYER_DIED);
+		CompanionDebugLogger.logEventDetected(player, "OYUNCU_ÖLDÜ", "LivingDeathEvent");
+		CompanionMoodEngine.processTrigger(MoodTrigger.PLAYER_DIED, player);
 		triggerProactiveSpeech(player, "player_died",
-			"Oyuncu az önce öldü. Companion üzgün ama teselli eden, 'geçer geçer' tarzında kısa bir şey söylesin. Ders verme!");
+			"Oyuncu az önce öldü. Companion üzgün ama teselli eden, 'geçer geçer' tarzında kısa bir şey söylesin.");
 	}
 
 	/**
 	 * Fires a proactive (unsolicited) companion speech if cooldown allows.
 	 */
 	private static void triggerProactiveSpeech(ServerPlayer player, String eventKey, String situationHint) {
-		if (!CompanionMoodEngine.canSpeakProactively()) return;
+		if (!CompanionMoodEngine.canSpeakProactively()) {
+			CompanionDebugLogger.logProactiveSpeechBlocked(player, "Cooldown aktif (90s)");
+			return;
+		}
+		CompanionDebugLogger.logProactiveSpeechFired(player, eventKey);
 
 		String prompt = "Sen " + player.getScoreboardName() + " ile birlikte oynayan bir arkadaşsın. "
 				+ "DURUM: " + situationHint + " "

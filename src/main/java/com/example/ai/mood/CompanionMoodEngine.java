@@ -1,5 +1,7 @@
 package com.example.ai.mood;
 
+import com.example.ai.debug.CompanionDebugLogger;
+import net.minecraft.server.level.ServerPlayer;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.atomic.AtomicReference;
@@ -33,9 +35,16 @@ public class CompanionMoodEngine {
 	 * Updates the companion's mood and records the event in emotional memory.
 	 */
 	public static void processTrigger(MoodTrigger trigger) {
+		processTrigger(trigger, null);
+	}
+
+	public static void processTrigger(MoodTrigger trigger, ServerPlayer debugPlayer) {
 		CompanionMoodState newMood = resolveMood(trigger);
-		currentMood.set(newMood);
+		CompanionMoodState oldMood = currentMood.getAndSet(newMood);
 		recordMemoryEvent(trigger.getMemoryDescription());
+		if (debugPlayer != null && oldMood != newMood) {
+			CompanionDebugLogger.logMoodChange(debugPlayer, trigger, newMood);
+		}
 	}
 
 	/**

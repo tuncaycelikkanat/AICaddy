@@ -75,6 +75,22 @@ public class ExampleMod implements ModInitializer {
 								return 1;
 							}))
 					)
+					.then(net.minecraft.commands.Commands.literal("debug")
+							.then(net.minecraft.commands.Commands.literal("aç").executes(context -> {
+								com.example.ai.debug.CompanionDebugLogger.setEnabled(true);
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+									"§8[DEBUG] §a✅ Debug modu AÇILDl! §7Olaylar, ruh hali değişimleri ve proaktif konuşmalar chat'e basılacak."
+								), false);
+								return 1;
+							}))
+							.then(net.minecraft.commands.Commands.literal("kapat").executes(context -> {
+								com.example.ai.debug.CompanionDebugLogger.setEnabled(false);
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+									"§8[DEBUG] §c❌ Debug modu kapatıldı."
+								), false);
+								return 1;
+							}))
+					)
 			);
 		});
 	}
