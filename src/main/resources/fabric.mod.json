@@ -2,8 +2,8 @@
 	"schemaVersion": 1,
 	"id": "modid",
 	"version": "${version}",
-	"name": "Example Mod",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"name": "AI Companion Pet Mod",
+	"description": "AI-powered Minecraft Voice Companion Pet Mod (Step 1: Minecraft Cat Follower)",
 	"authors": [
 		"Me!"
 	],
@@ -20,14 +20,13 @@
 		],
 		"client": [
 			"com.example.client.ExampleModClient"
+		],
+		"voicechat": [
+			"com.example.voice.AiCompanionVoicePlugin"
 		]
 	},
 	"mixins": [
-		"modid.mixins.json",
-		{
-			"config": "modid.client.mixins.json",
-			"environment": "client"
-		}
+		"modid.mixins.json"
 	],
 	"depends": {
 		"fabricloader": ">=0.19.3",

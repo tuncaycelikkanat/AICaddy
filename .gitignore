@@ -1,6 +1,7 @@
 # gradle
 
 .gradle/
+.gradle_home/
 build/
 out/
 classes/
@@ -28,9 +29,17 @@ bin/
 
 *.DS_Store
 
-# fabric
+# fabric & models
 
 run/
+models/
+*.zip
+
+# secrets & api keys
+*.key
+*.env
+*api_key*
+*.secret
 
 # java
 
