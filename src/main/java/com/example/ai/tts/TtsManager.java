@@ -90,7 +90,7 @@ public class TtsManager {
 					String val = java.nio.file.Files.readString(file.toPath()).trim();
 					if (!val.isEmpty()) {
 						cachedElevenLabsKey = val;
-						ExampleMod.LOGGER.info("✔ Loaded ElevenLabs API Key for voice ID lhTvHflPVOqgSWyuWQry");
+						ExampleMod.LOGGER.info("✔ Loaded ElevenLabs API Key for voice ID EXAVITQu4vr4xnSDxMaL (Bella)");
 						break;
 					}
 				} catch (Exception e) {
@@ -103,7 +103,7 @@ public class TtsManager {
 
 	private static boolean playSentenceElevenLabs(String sentence, String apiKey) {
 		try {
-			String urlStr = "https://api.elevenlabs.io/v1/text-to-speech/lhTvHflPVOqgSWyuWQry";
+			String urlStr = "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL";
 			URL url = new URL(urlStr);
 			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 			conn.setRequestMethod("POST");
