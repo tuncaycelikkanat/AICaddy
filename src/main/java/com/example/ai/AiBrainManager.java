@@ -89,17 +89,21 @@ public class AiBrainManager {
 		if (activeProvider == null || !lastLoadedProviderId.equals(providerId)) {
 			lastLoadedProviderId = providerId;
 			switch (providerId) {
+				case "groq":
+					activeProvider = new com.example.ai.provider.GroqAiProvider();
+					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: Groq LPU (Llama 3.3 70B)");
+					break;
 				case "openai":
-					activeProvider = new OpenAiProvider();
+					activeProvider = new com.example.ai.provider.OpenAiProvider();
 					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: OpenAI (ChatGPT)");
 					break;
 				case "ollama":
-					activeProvider = new OllamaAiProvider();
+					activeProvider = new com.example.ai.provider.OllamaAiProvider();
 					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: Local Ollama");
 					break;
 				case "gemini":
 				default:
-					activeProvider = new GeminiAiProvider();
+					activeProvider = new com.example.ai.provider.GeminiAiProvider();
 					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: Google Gemini");
 					break;
 			}

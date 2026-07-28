@@ -40,6 +40,7 @@ models/
 *.env
 *api_key*
 *.secret
+config/
 
 # java
 
