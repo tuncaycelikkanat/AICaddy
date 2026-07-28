@@ -30,26 +30,40 @@ public class AiBrainManager {
 	private static String lastLoadedProviderId = "";
 	private static long lastRequestTimeMs = 0;
 
-	// Short-term conversation memory: last 5 turns
-	private static final List<ChatTurn> CHAT_HISTORY = new ArrayList<>();
+	// Short-term conversation memory: last 5 turns per player UUID
+	private static final java.util.Map<java.util.UUID, List<ChatTurn>> PLAYER_HISTORIES =
+			new java.util.concurrent.ConcurrentHashMap<>();
 	private static final int MAX_HISTORY_TURNS = 5;
 
-	// ─── History Management ────────────────────────────────────────────────────
+	// ─── History Management (Multiplayer Isolated) ─────────────────────────────
 
-	public static synchronized void addTurnToHistory(String userMsg, String aiResp) {
-		CHAT_HISTORY.add(new ChatTurn(userMsg, aiResp));
-		if (CHAT_HISTORY.size() > MAX_HISTORY_TURNS) {
-			CHAT_HISTORY.remove(0);
+	public static synchronized void addTurnToHistory(net.minecraft.server.level.ServerPlayer player, String userMsg, String aiResp) {
+		java.util.UUID uuid = player != null ? player.getUUID() : java.util.UUID.nameUUIDFromBytes("console".getBytes());
+		List<ChatTurn> history = PLAYER_HISTORIES.computeIfAbsent(uuid, k -> new ArrayList<>());
+		history.add(new ChatTurn(userMsg, aiResp));
+		while (history.size() > MAX_HISTORY_TURNS) {
+			history.remove(0);
 		}
 	}
 
-	public static synchronized void clearHistory() {
-		CHAT_HISTORY.clear();
-		ExampleMod.LOGGER.info("✔ AI Companion chat history cleared.");
+	public static synchronized void clearHistory(net.minecraft.server.level.ServerPlayer player) {
+		if (player == null) {
+			PLAYER_HISTORIES.clear();
+		} else {
+			PLAYER_HISTORIES.remove(player.getUUID());
+		}
+		ExampleMod.LOGGER.info("✔ AI Companion chat history cleared for player: {}",
+				player != null ? player.getScoreboardName() : "ALL");
 	}
 
-	public static synchronized List<ChatTurn> getHistorySnapshot() {
-		return new ArrayList<>(CHAT_HISTORY);
+	public static synchronized void clearHistory() {
+		clearHistory(null);
+	}
+
+	public static synchronized List<ChatTurn> getHistorySnapshot(net.minecraft.server.level.ServerPlayer player) {
+		java.util.UUID uuid = player != null ? player.getUUID() : java.util.UUID.nameUUIDFromBytes("console".getBytes());
+		List<ChatTurn> history = PLAYER_HISTORIES.getOrDefault(uuid, java.util.Collections.emptyList());
+		return new ArrayList<>(history);
 	}
 
 	// ─── Provider Management ───────────────────────────────────────────────────
@@ -138,7 +152,7 @@ public class AiBrainManager {
 		}
 
 		// ── Conversation history ──
-		List<ChatTurn> history = getHistorySnapshot();
+		List<ChatTurn> history = getHistorySnapshot(player);
 		if (!history.isEmpty()) {
 			sb.append("[SON KONUŞMALARIMIZ]:\n");
 			for (ChatTurn turn : history) {
@@ -180,8 +194,8 @@ public class AiBrainManager {
 		// Handle "unut" command
 		String lower = playerSpeech.toLowerCase().trim();
 		if (lower.equals("unut") || lower.equals("hafızayı temizle") || lower.equals("geçmişi temizle")) {
-			clearHistory();
-			return CompletableFuture.completedFuture("Tamam tamam, ne konuşmuşsak hepsini sildim. Sıfırdan başlıyoruz!");
+			clearHistory(player);
+			return CompletableFuture.completedFuture("Tamam tamam, seninle ne konuşmuşsak hepsini sildim. Sıfırdan başlıyoruz!");
 		}
 
 		// Notify mood engine about player speaking
@@ -216,7 +230,7 @@ public class AiBrainManager {
 		lastRequestTimeMs = now;
 
 		generateCompanionResponseAsync(player, playerSpeech).thenAccept(aiResponse -> {
-			addTurnToHistory(playerSpeech, aiResponse);
+			addTurnToHistory(player, playerSpeech, aiResponse);
 			broadcastResponse(player, aiResponse);
 		});
 	}
