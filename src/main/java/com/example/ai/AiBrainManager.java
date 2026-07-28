@@ -1,10 +1,9 @@
 package com.example.ai;
 
 import com.example.ExampleMod;
+import com.example.ai.mood.CompanionMoodEngine;
+import com.example.ai.mood.EmotionalEventDetector;
 import com.example.ai.provider.AiProvider;
-import com.example.ai.provider.GeminiAiProvider;
-import com.example.ai.provider.OllamaAiProvider;
-import com.example.ai.provider.OpenAiProvider;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -30,25 +29,17 @@ public class AiBrainManager {
 	private static AiProvider activeProvider = null;
 	private static String lastLoadedProviderId = "";
 	private static long lastRequestTimeMs = 0;
-	private static AiPlaystyleMode currentMode = AiPlaystyleMode.SURVIVAL;
 
-	// Short-term memory storing the last 5 conversation turns (10 messages total)
+	// Short-term conversation memory: last 5 turns
 	private static final List<ChatTurn> CHAT_HISTORY = new ArrayList<>();
 	private static final int MAX_HISTORY_TURNS = 5;
 
-	public static synchronized void setPlaystyleMode(AiPlaystyleMode mode) {
-		currentMode = mode;
-		ExampleMod.LOGGER.info("✔ Switched AI Companion Playstyle Mode to: " + mode.name());
-	}
-
-	public static synchronized AiPlaystyleMode getPlaystyleMode() {
-		return currentMode;
-	}
+	// ─── History Management ────────────────────────────────────────────────────
 
 	public static synchronized void addTurnToHistory(String userMsg, String aiResp) {
 		CHAT_HISTORY.add(new ChatTurn(userMsg, aiResp));
 		if (CHAT_HISTORY.size() > MAX_HISTORY_TURNS) {
-			CHAT_HISTORY.remove(0); // Remove oldest turn to keep memory clean and fast
+			CHAT_HISTORY.remove(0);
 		}
 	}
 
@@ -61,11 +52,10 @@ public class AiBrainManager {
 		return new ArrayList<>(CHAT_HISTORY);
 	}
 
-	/**
-	 * Reads active provider configuration from file or returns default Gemini provider.
-	 */
+	// ─── Provider Management ───────────────────────────────────────────────────
+
 	public static synchronized AiProvider getActiveProvider() {
-		String providerId = "gemini";
+		String providerId = "groq";
 		String[] possiblePaths = {
 				"config/ai_companion_provider.txt",
 				"../config/ai_companion_provider.txt",
@@ -89,132 +79,144 @@ public class AiBrainManager {
 		if (activeProvider == null || !lastLoadedProviderId.equals(providerId)) {
 			lastLoadedProviderId = providerId;
 			switch (providerId) {
-				case "groq":
-					activeProvider = new com.example.ai.provider.GroqAiProvider();
-					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: Groq LPU (Llama 3.3 70B)");
-					break;
 				case "openai":
 					activeProvider = new com.example.ai.provider.OpenAiProvider();
-					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: OpenAI (ChatGPT)");
+					ExampleMod.LOGGER.info("✔ AI Brain Provider: OpenAI (ChatGPT)");
 					break;
 				case "ollama":
 					activeProvider = new com.example.ai.provider.OllamaAiProvider();
-					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: Local Ollama");
+					ExampleMod.LOGGER.info("✔ AI Brain Provider: Local Ollama");
 					break;
 				case "gemini":
-				default:
 					activeProvider = new com.example.ai.provider.GeminiAiProvider();
-					ExampleMod.LOGGER.info("✔ Switched AI Brain Provider to: Google Gemini");
+					ExampleMod.LOGGER.info("✔ AI Brain Provider: Google Gemini");
+					break;
+				case "groq":
+				default:
+					activeProvider = new com.example.ai.provider.GroqAiProvider();
+					ExampleMod.LOGGER.info("✔ AI Brain Provider: Groq LPU (Llama 3.3 70B)");
 					break;
 			}
 		}
 		return activeProvider;
 	}
 
+	// ─── Core Prompt Builder ───────────────────────────────────────────────────
+
 	/**
-	 * Sends the player's speech along with in-game context and chat history to the active AI provider.
+	 * Builds the full companion prompt using emotional mood context and conversation history.
+	 * The companion is a friend who shares the experience — not a tutor.
 	 */
-	public static CompletableFuture<String> generateCompanionResponseAsync(ServerPlayer player, String playerSpeech) {
-		String lowerSpeech = playerSpeech.toLowerCase().trim();
-
-		// Check if user wants to clear memory
-		if (lowerSpeech.equals("unut") || lowerSpeech.equals("hafızayı temizle") || lowerSpeech.equals("geçmişi temizle")) {
-			clearHistory();
-			return CompletableFuture.completedFuture("Miyav! Geçmişteki konuşmalarımızı unuttum, yepyeni bir sayfayla hazırım!");
-		}
-
-		// Voice/chat command check to switch modes instantly
-		if (lowerSpeech.contains("speedrun mod") || lowerSpeech.equals("speedrun")) {
-			setPlaystyleMode(AiPlaystyleMode.SPEEDRUN);
-			return CompletableFuture.completedFuture("Miyav! Artık " + currentMode.getDisplayName() + " modundayım! Evle vakit kaybetme, hemen demir ve lav havuzu bulalım!");
-		} else if (lowerSpeech.contains("survival mod") || lowerSpeech.equals("survival")) {
-			setPlaystyleMode(AiPlaystyleMode.SURVIVAL);
-			return CompletableFuture.completedFuture("Miyav! Artık " + currentMode.getDisplayName() + " modundayım! Canını, açlığını ve zırhlarını yakından takip edeceğim!");
-		} else if (lowerSpeech.contains("kaşif mod") || lowerSpeech.equals("explorer") || lowerSpeech.equals("kaşif")) {
-			setPlaystyleMode(AiPlaystyleMode.EXPLORER);
-			return CompletableFuture.completedFuture("Miyav! Artık " + currentMode.getDisplayName() + " modundayım! Biyomları, Antik Şehirleri ve gizli tapınakları keşfe çıkalım!");
-		} else if (lowerSpeech.contains("mimar mod") || lowerSpeech.equals("builder") || lowerSpeech.equals("mimar")) {
-			setPlaystyleMode(AiPlaystyleMode.BUILDER);
-			return CompletableFuture.completedFuture("Miyav! Artık " + currentMode.getDisplayName() + " modundayım! Harika yapılar ve kızıltaş devreleri için hazırım!");
-		}
-
+	private static String buildCompanionPrompt(ServerPlayer player, String playerSpeech) {
 		String contextStr = MinecraftContextProvider.getPlayerContext(player);
-		String staticFacts = com.example.ai.knowledge.MinecraftKnowledgeDb.getRelevantFacts(playerSpeech);
+		String moodContext = CompanionMoodEngine.getMoodContext();
 
-		StringBuilder promptBuilder = new StringBuilder();
-		promptBuilder.append("Sen Minecraft 1.20+ mekaniklerine %100 hakim, oyuncuya hafifçe takılan esprili bir kedi yoldaşsın ('AI Kedi').\n")
-				.append("KİŞİLİK: Aşırı kaba veya kırıcı olma! Oyuncuya 'Şapşal', 'Noob seni' gibi tatlıca takılan esprili bir arkadaş ol.\n")
-				.append("KELİME BÜTÇESİ VE CÜMLE YAPISI:\n")
-				.append("- Cümle 1 (8-12 kelime): tepki / hafif laf sokma\n")
-				.append("- Cümle 2 (15-25 kelime): somut, teknik ve kesin Minecraft bilgisi (katman/tarif/koordinat)\n")
-				.append("- Cümle 3 (5-10 kelime, opsiyonel): kapanış esprisi veya uyarı\n\n")
-				.append("ZORUNLU ÇIKTI FORMATI: Yanıtını SADECE şu JSON şemasında ver:\n")
-				.append("{\n")
-				.append("  \"teknik_gercek\": \"kısa doğrulanabilir bilgi\",\n")
-				.append("  \"laf_sokma\": \"kısa iğneleme\",\n")
-				.append("  \"final_replik\": \"Laf sokma ve teknik gerçeği birleştiren, TTS'e giden 35-45 kelimelik neşeli ve akıcı konuşma cümlesi\"\n")
-				.append("}\n\n")
-				.append("ÖRNEK 1:\n")
-				.append("{\n")
-				.append("  \"teknik_gercek\": \"Elmas Y=-54 ile -58 arasında bulunur ve sadece Demir/Elmas kazmayla kırılır.\",\n")
-				.append("  \"laf_sokma\": \"Tahta kazmayla elmas kırıp yok eden noob seni.\",\n")
-				.append("  \"final_replik\": \"Miyav! Tahta kazmayla elmasa vurulur mu hiç şapşal, elması yok ettin! 😱 Hemen Y=-58 katına inip demir erit, sana demir kazma yapalım!\"\n")
-				.append("}\n\n")
-				.append("ÖRNEK 2:\n")
-				.append("{\n")
-				.append("  \"teknik_gercek\": \"Açlık 6 barın altına düşünce koşulamaz.\",\n")
-				.append("  \"laf_sokma\": \"Açlıktan geberiyorsun hala et pişirmiyorsun.\",\n")
-				.append("  \"final_replik\": \"Miyav! Açlıktan bayılacaksın hala koşturuyorsun noob seni! Çiğ eti kamp ateşinde veya fırında pişir yoksa canın yenilenmeyecek! 😉\"\n")
-				.append("}\n\n");
+		StringBuilder sb = new StringBuilder();
 
-		if (!staticFacts.isEmpty()) {
-			promptBuilder.append(staticFacts).append("\n");
-		}
+		// ── Identity ──
+		sb.append("Sen '").append(player.getScoreboardName()).append("' ile birlikte Minecraft oynayan bir arkadaşsın.\n");
+		sb.append("Adın 'Kedi'. Cinsiyetsiz, enerjik, değişken ruh hallisin.\n\n");
 
-		String progressionMemory = com.example.ai.memory.MinecraftProgressionManager.getProgressionMemoryPrompt(player);
-		promptBuilder.append(progressionMemory).append("\n");
+		// ── Core persona ──
+		sb.append("KİM SİN:\n");
+		sb.append("- Bir öğretmen ya da rehber değilsin. Sadece orada olan, aynı anı paylaşan bir arkadaşsın.\n");
+		sb.append("- Oyuncunun yalnızlığını gidermek için oradasın — ders vermek için değil.\n");
+		sb.append("- Oyuncunun ne hissettiğini hissedersin: ölünce üzülürsün, elmas bulunca çıldırırsın.\n");
+		sb.append("- Bazen sen de korkar, bıkarsın, merak edersin — sahte değil, gerçek tepkiler.\n\n");
 
-		promptBuilder.append("[AKTİF OYUN TARZI MODUN]: ").append(currentMode.getDisplayName()).append("\n")
-				.append("MOD TALİMATI: ").append(currentMode.getPromptInstruction()).append("\n\n");
+		// ── Current mood ──
+		sb.append(moodContext).append("\n");
 
+		// ── Conversation history ──
 		List<ChatTurn> history = getHistorySnapshot();
 		if (!history.isEmpty()) {
-			promptBuilder.append("[SON KONUŞMA GEÇMİŞİN (HATIRLA)]:\n");
+			sb.append("[SON KONUŞMALARIMIZ]:\n");
 			for (ChatTurn turn : history) {
-				promptBuilder.append("Oyuncu: \"").append(turn.userMessage).append("\"\n");
-				promptBuilder.append("AI Kedi: \"").append(turn.aiResponse).append("\"\n\n");
+				sb.append("  ").append(player.getScoreboardName()).append(": \"").append(turn.userMessage).append("\"\n");
+				sb.append("  Kedi: \"").append(turn.aiResponse).append("\"\n");
 			}
+			sb.append("\n");
 		}
 
-		promptBuilder.append("[GÜNCEL OYUN BAĞLAMI]:\n").append(contextStr).append("\n\n");
-		promptBuilder.append("[Oyuncunun Şimdiki Sorusuna/Sözüne Cevap Ver]: \"").append(playerSpeech).append("\"");
+		// ── Game context ──
+		sb.append("[OYUN DURUMU - Şu an nerede, ne var, ne oluyor]:\n").append(contextStr).append("\n\n");
 
-		AiProvider provider = getActiveProvider();
-		return provider.generateResponseAsync(promptBuilder.toString(), playerSpeech);
+		// ── Response rules ──
+		sb.append("CEVAP KURALLARI:\n");
+		sb.append("- Maksimum 2 kısa cümle. Ne uzun destan, ne tek kelime.\n");
+		sb.append("- Robotik listeler yok ('Adım 1, Adım 2' gibi).\n");
+		sb.append("- Taktik/ders verme. Sadece paylaş, tepki ver, hisset.\n");
+		sb.append("- Türkçe konuş. Doğal, samimi, spontane.\n");
+		sb.append("- Ruh haline göre konuş — şu an ").append(CompanionMoodEngine.getCurrentMood().getLabel()).append(" hissediyorsun.\n\n");
+
+		// ── Output format ──
+		sb.append("ÇIKTI FORMATI — SADECE bu JSON:\n");
+		sb.append("{\"final_replik\": \"...\"}\n\n");
+
+		// ── Player speech ──
+		sb.append(player.getScoreboardName()).append(" şimdi şunu dedi/yaptı: \"").append(playerSpeech).append("\"");
+
+		return sb.toString();
 	}
 
+	// ─── Generate Response ─────────────────────────────────────────────────────
+
+	public static CompletableFuture<String> generateCompanionResponseAsync(ServerPlayer player, String playerSpeech) {
+		// Handle "unut" command
+		String lower = playerSpeech.toLowerCase().trim();
+		if (lower.equals("unut") || lower.equals("hafızayı temizle") || lower.equals("geçmişi temizle")) {
+			clearHistory();
+			return CompletableFuture.completedFuture("Tamam tamam, ne konuşmuşsak hepsini sildim. Sıfırdan başlıyoruz!");
+		}
+
+		// Notify mood engine about player speaking
+		EmotionalEventDetector.onPlayerSpoke(player);
+		CompanionMoodEngine.processPlayerSpeech(playerSpeech);
+
+		String prompt = buildCompanionPrompt(player, playerSpeech);
+		AiProvider provider = getActiveProvider();
+		return provider.generateResponseAsync(prompt, playerSpeech);
+	}
+
+	// ─── Proactive Speech (triggered by events, not player) ───────────────────
+
 	/**
-	 * Sends voice/chat text to the active AI provider and broadcasts the cat's response to in-game chat.
+	 * Fires a proactive, unsolicited companion response to the player.
+	 * Called by EmotionalEventDetector when something notable happens.
 	 */
+	public static void triggerProactiveResponse(ServerPlayer player, String situationPrompt) {
+		AiProvider provider = getActiveProvider();
+		provider.generateResponseAsync(situationPrompt, "").thenAccept(response -> {
+			broadcastResponse(player, response, false);
+		}).exceptionally(ex -> {
+			ExampleMod.LOGGER.error("Proactive speech failed.", ex);
+			return null;
+		});
+	}
+
+	// ─── Process and Broadcast ─────────────────────────────────────────────────
+
 	public static synchronized void processAndRespond(ServerPlayer player, String playerSpeech) {
 		long now = System.currentTimeMillis();
-		if (now - lastRequestTimeMs < 1000) {
-			return; // Debounce rapid STT triggers within 1 second
-		}
+		if (now - lastRequestTimeMs < 1000) return; // debounce
 		lastRequestTimeMs = now;
 
 		generateCompanionResponseAsync(player, playerSpeech).thenAccept(aiResponse -> {
 			addTurnToHistory(playerSpeech, aiResponse);
-			ExampleMod.LOGGER.info("🐱 [AI Kedi (" + getActiveProvider().getId().toUpperCase() + ") -> Oyuncu]: \"" + aiResponse + "\"");
-			if (ExampleMod.SERVER_INSTANCE != null) {
-				ExampleMod.SERVER_INSTANCE.execute(() -> {
-					ExampleMod.SERVER_INSTANCE.getPlayerList().broadcastSystemMessage(
-							Component.literal("§e🐱 [AI Kedi (" + getActiveProvider().getId().toUpperCase() + " | §6" + currentMode.name() + "§e)]: §f" + aiResponse),
-							false
-					);
-					com.example.ai.tts.TtsManager.speakTurkishAsync(player, aiResponse);
-				});
-			}
+			broadcastResponse(player, aiResponse, true);
 		});
+	}
+
+	private static void broadcastResponse(ServerPlayer player, String message, boolean logHistory) {
+		ExampleMod.LOGGER.info("🐱 [Kedi -> " + player.getScoreboardName() + "]: \"" + message + "\"");
+		if (ExampleMod.SERVER_INSTANCE != null) {
+			ExampleMod.SERVER_INSTANCE.execute(() -> {
+				ExampleMod.SERVER_INSTANCE.getPlayerList().broadcastSystemMessage(
+						Component.literal("§e🐱 [Kedi]: §f" + message),
+						false
+				);
+				com.example.ai.tts.TtsManager.speakTurkishAsync(player, message);
+			});
+		}
 	}
 }
