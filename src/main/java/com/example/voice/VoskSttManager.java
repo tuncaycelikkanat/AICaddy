@@ -13,6 +13,8 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -26,6 +28,19 @@ public class VoskSttManager {
 	private static Recognizer recognizer = null;
 	private static boolean isReady = false;
 
+	private static String lastPartialText = "";
+	private static long lastSpeechTimeMs = 0;
+
+	public interface SpeechListener {
+		void onSpeechRecognized(String text);
+	}
+
+	private static SpeechListener speechListener = null;
+
+	public static void setSpeechListener(SpeechListener listener) {
+		speechListener = listener;
+	}
+
 	public static void initialize() {
 		// Reduce Vosk native C++ library log spam.
 		LibVosk.setLogLevel(LogLevel.WARNINGS);
@@ -36,10 +51,15 @@ public class VoskSttManager {
 				File modelDir = ensureModelDownloaded();
 				ExampleMod.LOGGER.info("Loading Vosk Turkish model from: " + modelDir.getAbsolutePath());
 				model = new Model(modelDir.getAbsolutePath());
-				// Simple Voice Chat uses 48000 Hz sample rate by default.
 				recognizer = new Recognizer(model, 48000.0f);
 				isReady = true;
 				ExampleMod.LOGGER.info("✔ Vosk Turkish STT Model initialized successfully.");
+
+				// Start background daemon thread to automatically flush completed sentences 400ms after speech ends
+				Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+					checkAndFlushSpeech();
+				}, 150, 150, TimeUnit.MILLISECONDS);
+
 			} catch (Exception e) {
 				ExampleMod.LOGGER.error("Failed to initialize Vosk STT model.", e);
 			}
@@ -51,7 +71,28 @@ public class VoskSttManager {
 	}
 
 	/**
-	 * Transcribes raw 16-bit PCM audio samples into text.
+	 * Checks if 350ms have elapsed since the player stopped speaking, even if PTT button was released.
+	 */
+	public static void checkAndFlushSpeech() {
+		try {
+			if (!lastPartialText.isEmpty() && lastPartialText.length() > 3) {
+				long now = System.currentTimeMillis();
+				if (now - lastSpeechTimeMs > 350) {
+					String completedSpeech = lastPartialText;
+					lastPartialText = "";
+					ExampleMod.LOGGER.info("⏱️ Auto-flushed speech after silence: \"" + completedSpeech + "\"");
+					if (speechListener != null) {
+						speechListener.onSpeechRecognized(completedSpeech);
+					}
+				}
+			}
+		} catch (Exception e) {
+			ExampleMod.LOGGER.error("Error in checkAndFlushSpeech background timer:", e);
+		}
+	}
+
+	/**
+	 * Transcribes raw 16-bit PCM audio samples into text with smart pause detection.
 	 */
 	public static synchronized String transcribe(short[] pcmData) {
 		if (!isReady()) {
@@ -59,13 +100,38 @@ public class VoskSttManager {
 		}
 		try {
 			boolean isFinal = recognizer.acceptWaveForm(pcmData, pcmData.length);
-			String jsonResult = isFinal ? recognizer.getResult() : recognizer.getPartialResult();
+			if (isFinal) {
+				String jsonResult = recognizer.getResult();
+				JsonObject jsonObject = JsonParser.parseString(jsonResult).getAsJsonObject();
+				if (jsonObject.has("text")) {
+					String text = jsonObject.get("text").getAsString().trim();
+					lastPartialText = "";
+					if (speechListener != null && !text.isEmpty()) {
+						speechListener.onSpeechRecognized(text);
+					}
+					return text;
+				}
+			} else {
+				String jsonResult = recognizer.getPartialResult();
+				JsonObject jsonObject = JsonParser.parseString(jsonResult).getAsJsonObject();
+				if (jsonObject.has("partial")) {
+					String partial = jsonObject.get("partial").getAsString().trim();
+					long now = System.currentTimeMillis();
 
-			JsonObject jsonObject = JsonParser.parseString(jsonResult).getAsJsonObject();
-			if (jsonObject.has("text")) {
-				return jsonObject.get("text").getAsString().trim();
-			} else if (jsonObject.has("partial")) {
-				return jsonObject.get("partial").getAsString().trim();
+					if (partial.length() > 3 && !partial.equals(lastPartialText)) {
+						lastPartialText = partial;
+						lastSpeechTimeMs = now;
+					} else if (partial.length() > 3 && (now - lastSpeechTimeMs > 350)) {
+						String completedSpeech = partial;
+						recognizer.reset();
+						lastPartialText = "";
+						lastSpeechTimeMs = now;
+						if (speechListener != null) {
+							speechListener.onSpeechRecognized(completedSpeech);
+						}
+						return completedSpeech;
+					}
+				}
 			}
 		} catch (Exception e) {
 			ExampleMod.LOGGER.error("Error transcribing PCM audio:", e);
@@ -89,7 +155,6 @@ public class VoskSttManager {
 		ExampleMod.LOGGER.info("Vosk Turkish model not found. Downloading 45 MB model archive...");
 		File zipFile = new File(modelsDirFile, "vosk-model-tr.zip");
 
-		// Download ZIP archive.
 		try (InputStream in = new URL(MODEL_URL).openStream();
 			 FileOutputStream out = new FileOutputStream(zipFile)) {
 			byte[] buffer = new byte[8192];
@@ -99,7 +164,6 @@ public class VoskSttManager {
 			}
 		}
 
-		// Extract ZIP archive.
 		ExampleMod.LOGGER.info("Extracting Vosk model archive...");
 		try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
 			ZipEntry entry;
@@ -121,7 +185,6 @@ public class VoskSttManager {
 			}
 		}
 
-		// Rename extracted root directory to target directory name.
 		File extractedDir = new File(modelsDirFile, "vosk-model-small-tr-0.3");
 		if (extractedDir.exists()) {
 			extractedDir.renameTo(targetDir);
