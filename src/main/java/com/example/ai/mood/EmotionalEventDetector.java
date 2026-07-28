@@ -286,8 +286,8 @@ public class EmotionalEventDetector {
 	 * Fires a proactive (unsolicited) companion speech if cooldown allows.
 	 */
 	private static void triggerProactiveSpeech(ServerPlayer player, String eventKey, String situationHint) {
-		if (!CompanionMoodEngine.canSpeakProactively()) {
-			CompanionDebugLogger.logProactiveSpeechBlocked(player, "Cooldown aktif (90s)");
+		if (!CompanionMoodEngine.canSpeakProactively(eventKey)) {
+			CompanionDebugLogger.logProactiveSpeechBlocked(player, "'" + eventKey + "' cooldown aktif (30s)");
 			return;
 		}
 		CompanionDebugLogger.logProactiveSpeechFired(player, eventKey);

@@ -1,7 +1,6 @@
 package com.example.ai.tts;
 
 import com.example.ExampleMod;
-import javazoom.jl.player.Player;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
@@ -17,94 +16,137 @@ import java.util.concurrent.Executors;
 public class TtsManager {
 
 	private static final ExecutorService TTS_EXECUTOR = Executors.newSingleThreadExecutor();
-	private static boolean ttsEnabled = true;
+	private static volatile boolean ttsEnabled = true;
 
-	public static synchronized void setTtsEnabled(boolean enabled) {
+	// Path to the edge-tts binary (installed in venv)
+	private static final String EDGE_TTS_BIN = "/home/tuncay/.venvs/tts/bin/edge-tts";
+	// Microsoft Edge TTS voice — natural Turkish female neural voice
+	private static final String EDGE_TTS_VOICE = "tr-TR-EmelNeural";
+	// Player binary for piped audio
+	private static final String MPV_BIN = "/usr/bin/mpv";
+
+	public static void setTtsEnabled(boolean enabled) {
 		ttsEnabled = enabled;
-		ExampleMod.LOGGER.info("✔ AI Companion TTS Enabled: " + ttsEnabled);
+		ExampleMod.LOGGER.info("TTS {}", enabled ? "açıldı" : "kapatıldı");
 	}
 
-	public static synchronized boolean isTtsEnabled() {
+	public static boolean isTtsEnabled() {
 		return ttsEnabled;
 	}
 
 	/**
-	 * Speaks the given text in Turkish asynchronously without blocking the game thread.
-	 * Also plays an in-game cute cat purr/meow sound effect.
+	 * Speaks the given text asynchronously using Microsoft Edge TTS (Emel Neural).
+	 * Falls back to ElevenLabs → StreamElements → Google TTS on failure.
 	 */
 	public static void speakTurkishAsync(ServerPlayer player, String text) {
-		if (!ttsEnabled || text == null || text.trim().isEmpty()) {
-			return;
-		}
+		if (!ttsEnabled || text == null || text.isBlank()) return;
 
-		// Play cute in-game cat sound with high pitch (1.25f = anime/cute cat pitch)
-		if (player != null && ExampleMod.SERVER_INSTANCE != null) {
-			ExampleMod.SERVER_INSTANCE.execute(() -> {
-				try {
-					player.level().playSound(
-							null,
-							player.blockPosition(),
-							SoundEvents.CAT_PURREOW,
-							SoundSource.NEUTRAL,
-							1.0f,
-							1.25f
-					);
-				} catch (Exception e) {
-					ExampleMod.LOGGER.debug("Could not play cat sound effect: " + e.getMessage());
-				}
-			});
-		}
+		// Play cute in-game cat sound
+		playCatSound(player);
 
-		// Clean up markdown or formatting tags before sending to TTS
-		final String cleanText = cleanTextForTts(text);
-
+		final String clean = cleanTextForTts(text);
 		TTS_EXECUTOR.submit(() -> {
 			try {
-				// Split long texts into smaller sentences (Google TTS supports ~180 chars per request)
-				String[] sentences = splitIntoSentences(cleanText, 160);
-				for (String sentence : sentences) {
-					if (sentence.trim().isEmpty()) continue;
-					playSentenceMp3(sentence.trim());
+				if (!speakEdgeTts(clean)) {
+					// Fallback to ElevenLabs
+					String elevenKey = getElevenLabsApiKey();
+					if (!elevenKey.isEmpty() && speakElevenLabs(clean, elevenKey)) return;
+					// Final fallback: StreamElements Filiz
+					speakStreamElements(clean);
 				}
 			} catch (Exception e) {
-				ExampleMod.LOGGER.error("TTS playback error: " + e.getMessage(), e);
+				ExampleMod.LOGGER.error("TTS oynatma hatası: {}", e.getMessage());
 			}
 		});
 	}
 
+	// ── Microsoft Edge TTS (Primary) ──────────────────────────────────────────
+
+	/**
+	 * Synthesizes speech via edge-tts and pipes stdout directly to mpv.
+	 * No temp files, no API keys, completely free.
+	 */
+	private static boolean speakEdgeTts(String text) {
+		try {
+			// edge-tts --voice tr-TR-EmelNeural --text "..." --write-media - | mpv - --no-video
+			ProcessBuilder edgePb = new ProcessBuilder(
+					EDGE_TTS_BIN,
+					"--voice", EDGE_TTS_VOICE,
+					"--text", text,
+					"--write-media", "-"
+			);
+			edgePb.redirectErrorStream(false);
+			Process edgeProcess = edgePb.start();
+
+			// Pipe edge-tts stdout → mpv stdin
+			ProcessBuilder mpvPb = new ProcessBuilder(
+					MPV_BIN, "-",
+					"--no-video",
+					"--really-quiet",
+					"--audio-display=no"
+			);
+			mpvPb.redirectErrorStream(false);
+			Process mpvProcess = mpvPb.start();
+
+			// Stream edge-tts output → mpv input in a thread
+			Thread pipeThread = new Thread(() -> {
+				try (InputStream edgeOut = edgeProcess.getInputStream();
+					 var mpvIn = mpvProcess.getOutputStream()) {
+					byte[] buf = new byte[4096];
+					int n;
+					while ((n = edgeOut.read(buf)) != -1) {
+						mpvIn.write(buf, 0, n);
+					}
+				} catch (Exception ignored) {}
+			});
+			pipeThread.setDaemon(true);
+			pipeThread.start();
+
+			int edgeExit = edgeProcess.waitFor();
+			pipeThread.join(8000);
+			mpvProcess.waitFor();
+
+			if (edgeExit == 0) {
+				return true;
+			}
+			ExampleMod.LOGGER.warn("edge-tts çıkış kodu: {}", edgeExit);
+		} catch (Exception e) {
+			ExampleMod.LOGGER.warn("Microsoft Edge TTS başarısız: {}", e.getMessage());
+		}
+		return false;
+	}
+
+	// ── ElevenLabs (Secondary) ────────────────────────────────────────────────
+
 	private static String cachedElevenLabsKey = null;
 
 	private static synchronized String getElevenLabsApiKey() {
-		if (cachedElevenLabsKey != null) {
-			return cachedElevenLabsKey;
-		}
-		String[] possiblePaths = {
+		if (cachedElevenLabsKey != null) return cachedElevenLabsKey;
+		String[] paths = {
 				"config/elevenlabs_api_key.txt",
 				"../config/elevenlabs_api_key.txt",
 				"/home/tuncay/Projects/mc/config/elevenlabs_api_key.txt"
 		};
-		for (String path : possiblePaths) {
+		for (String path : paths) {
 			java.io.File file = new java.io.File(path);
 			if (file.exists()) {
 				try {
 					String val = java.nio.file.Files.readString(file.toPath()).trim();
 					if (!val.isEmpty()) {
 						cachedElevenLabsKey = val;
-						ExampleMod.LOGGER.info("✔ Loaded ElevenLabs API Key for voice ID EXAVITQu4vr4xnSDxMaL (Bella)");
-						break;
+						return val;
 					}
 				} catch (Exception e) {
-					ExampleMod.LOGGER.error("Failed to read ElevenLabs key from: " + path, e);
+					ExampleMod.LOGGER.error("ElevenLabs key okunamadı: {}", path);
 				}
 			}
 		}
-		return cachedElevenLabsKey == null ? "" : cachedElevenLabsKey;
+		return "";
 	}
 
-	private static boolean playSentenceElevenLabs(String sentence, String apiKey) {
+	private static boolean speakElevenLabs(String text, String apiKey) {
 		try {
-			String urlStr = "https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL";
-			URL url = new URL(urlStr);
+			URL url = new URL("https://api.elevenlabs.io/v1/text-to-speech/EXAVITQu4vr4xnSDxMaL");
 			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 			conn.setRequestMethod("POST");
 			conn.setRequestProperty("Content-Type", "application/json");
@@ -114,85 +156,81 @@ public class TtsManager {
 			conn.setConnectTimeout(6000);
 			conn.setReadTimeout(6000);
 
-			String safeText = sentence.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ");
-			String jsonBody = "{\"text\": \"" + safeText + "\", \"model_id\": \"eleven_multilingual_v2\"}";
-
-			try (java.io.OutputStream os = conn.getOutputStream()) {
-				os.write(jsonBody.getBytes(StandardCharsets.UTF_8));
-			}
+			String safeText = text.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ");
+			String body = "{\"text\": \"" + safeText + "\", \"model_id\": \"eleven_multilingual_v2\"}";
+			conn.getOutputStream().write(body.getBytes(StandardCharsets.UTF_8));
 
 			if (conn.getResponseCode() == 200) {
-				try (InputStream in = conn.getInputStream()) {
-					Player mp3Player = new Player(in);
-					mp3Player.play();
-					mp3Player.close();
-				}
+				playWithMpv(conn.getInputStream());
 				return true;
-			} else {
-				ExampleMod.LOGGER.warn("ElevenLabs TTS error code: " + conn.getResponseCode());
 			}
+			ExampleMod.LOGGER.warn("ElevenLabs hata kodu: {}", conn.getResponseCode());
 		} catch (Exception e) {
-			ExampleMod.LOGGER.warn("ElevenLabs TTS failed: " + e.getMessage());
+			ExampleMod.LOGGER.warn("ElevenLabs başarısız: {}", e.getMessage());
 		}
 		return false;
 	}
 
-	private static void playSentenceMp3(String sentence) {
-		try {
-			// 1. Try ElevenLabs Anime Voice (lhTvHflPVOqgSWyuWQry) if API key is configured
-			String elevenKey = getElevenLabsApiKey();
-			if (!elevenKey.isEmpty() && playSentenceElevenLabs(sentence, elevenKey)) {
-				return;
-			}
+	// ── StreamElements Fallback ───────────────────────────────────────────────
 
-			String encoded = URLEncoder.encode(sentence, StandardCharsets.UTF_8);
-			// 2. Try Twitch/StreamElements Amazon Polly 'Filiz' (Natural Turkish Female Neural Voice)
-			String urlStr = "https://api.streamelements.com/kappa/v2/speech?voice=Filiz&text=" + encoded;
-			URL url = new URL(urlStr);
+	private static void speakStreamElements(String text) {
+		try {
+			String encoded = URLEncoder.encode(text, StandardCharsets.UTF_8);
+			URL url = new URL("https://api.streamelements.com/kappa/v2/speech?voice=Filiz&text=" + encoded);
 			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 			conn.setRequestMethod("GET");
-			conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+			conn.setRequestProperty("User-Agent", "Mozilla/5.0");
 			conn.setConnectTimeout(4000);
 			conn.setReadTimeout(4000);
-
 			if (conn.getResponseCode() == 200) {
-				try (InputStream in = conn.getInputStream()) {
-					Player mp3Player = new Player(in);
-					mp3Player.play();
-					mp3Player.close();
-				}
-				return;
-			}
-
-			// 3. Fallback to Google Translate TTS if StreamElements returns error
-			String fallbackUrl = "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=tr&q=" + encoded;
-			HttpURLConnection fallbackConn = (HttpURLConnection) new URL(fallbackUrl).openConnection();
-			fallbackConn.setRequestMethod("GET");
-			fallbackConn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-			if (fallbackConn.getResponseCode() == 200) {
-				try (InputStream in = fallbackConn.getInputStream()) {
-					Player mp3Player = new Player(in);
-					mp3Player.play();
-					mp3Player.close();
-				}
+				playWithMpv(conn.getInputStream());
 			}
 		} catch (Exception e) {
-			ExampleMod.LOGGER.warn("Failed to synthesize speech for sentence: \"" + sentence + "\" -> " + e.getMessage());
+			ExampleMod.LOGGER.warn("StreamElements fallback başarısız: {}", e.getMessage());
 		}
+	}
+
+	// ── Shared Helpers ────────────────────────────────────────────────────────
+
+	private static void playWithMpv(InputStream audioStream) throws Exception {
+		ProcessBuilder pb = new ProcessBuilder(
+				MPV_BIN, "-",
+				"--no-video",
+				"--really-quiet",
+				"--audio-display=no"
+		);
+		pb.redirectErrorStream(false);
+		Process process = pb.start();
+		try (var out = process.getOutputStream()) {
+			byte[] buf = new byte[4096];
+			int n;
+			while ((n = audioStream.read(buf)) != -1) {
+				out.write(buf, 0, n);
+			}
+		}
+		process.waitFor();
+	}
+
+	private static void playCatSound(ServerPlayer player) {
+		if (player == null || ExampleMod.SERVER_INSTANCE == null) return;
+		ExampleMod.SERVER_INSTANCE.execute(() -> {
+			try {
+				player.level().playSound(
+						null,
+						player.blockPosition(),
+						SoundEvents.CAT_PURREOW,
+						SoundSource.NEUTRAL,
+						1.0f, 1.25f
+				);
+			} catch (Exception ignored) {}
+		});
 	}
 
 	private static String cleanTextForTts(String text) {
-		// Remove emojis, markdown asterisks, brackets, and extra spaces
-		return text.replaceAll("[*#_`~]", "")
+		return text
+				.replaceAll("[*#_`~]", "")
+				.replaceAll("\\p{So}|\\p{Sm}|[\\uD83C-\\uDBFF\\uDC00-\\uDFFF]", "") // emojis
 				.replaceAll("\\s+", " ")
 				.trim();
-	}
-
-	private static String[] splitIntoSentences(String text, int maxLen) {
-		if (text.length() <= maxLen) {
-			return new String[]{text};
-		}
-		// Simple sentence splitting by punctuation
-		return text.split("(?<=[.!?])\\s+");
 	}
 }

@@ -4,6 +4,8 @@ import com.example.ai.debug.CompanionDebugLogger;
 import net.minecraft.server.level.ServerPlayer;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -17,13 +19,13 @@ public class CompanionMoodEngine {
 	private static final int MAX_MEMORY_SIZE = 5;
 
 	private static final AtomicReference<CompanionMoodState> currentMood =
-			new AtomicReference<>(CompanionMoodState.EXCITED); // Start happy on first join
+			new AtomicReference<>(CompanionMoodState.EXCITED);
 
 	private static final Deque<String> emotionalMemory = new ArrayDeque<>();
 
-	// Timestamp of last proactive speech to enforce cooldown
-	private static volatile long lastProactiveSpeechMs = 0;
-	private static final long PROACTIVE_COOLDOWN_MS = 90_000; // 90 seconds
+	// Per-event-key cooldown: same event key won't fire proactive speech twice within SAME_EVENT_COOLDOWN_MS
+	private static final Map<String, Long> lastEventFireTime = new ConcurrentHashMap<>();
+	private static final long SAME_EVENT_COOLDOWN_MS = 30_000; // 30 seconds per unique event type
 
 	// --- Public API ---
 
@@ -92,19 +94,21 @@ public class CompanionMoodEngine {
 	}
 
 	/**
-	 * Returns true if the companion is allowed to speak proactively right now.
+	 * Returns true if the companion is allowed to speak proactively for this event key.
+	 * Different event types can each fire once per SAME_EVENT_COOLDOWN_MS.
 	 */
-	public static boolean canSpeakProactively() {
+	public static boolean canSpeakProactively(String eventKey) {
 		long now = System.currentTimeMillis();
-		if (now - lastProactiveSpeechMs >= PROACTIVE_COOLDOWN_MS) {
-			lastProactiveSpeechMs = now;
+		Long last = lastEventFireTime.get(eventKey);
+		if (last == null || now - last >= SAME_EVENT_COOLDOWN_MS) {
+			lastEventFireTime.put(eventKey, now);
 			return true;
 		}
 		return false;
 	}
 
-	public static void resetProactiveCooldown() {
-		lastProactiveSpeechMs = 0;
+	public static void resetAllCooldowns() {
+		lastEventFireTime.clear();
 	}
 
 	// --- Internal ---

@@ -13,8 +13,6 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -28,8 +26,8 @@ public class VoskSttManager {
 	private static Recognizer recognizer = null;
 	private static boolean isReady = false;
 
-	private static String lastPartialText = "";
-	private static long lastSpeechTimeMs = 0;
+	private static volatile String lastPartialText = "";
+	private static volatile long lastSpeechTimeMs = 0;
 
 	public interface SpeechListener {
 		void onSpeechRecognized(String text);
@@ -53,12 +51,7 @@ public class VoskSttManager {
 				model = new Model(modelDir.getAbsolutePath());
 				recognizer = new Recognizer(model, 48000.0f);
 				isReady = true;
-				ExampleMod.LOGGER.info("✔ Vosk Turkish STT Model initialized successfully.");
-
-				// Start background daemon thread to automatically flush completed sentences 400ms after speech ends
-				Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
-					checkAndFlushSpeech();
-				}, 150, 150, TimeUnit.MILLISECONDS);
+				ExampleMod.LOGGER.info("✔ Vosk Türkçe STT modeli hazır.");
 
 			} catch (Exception e) {
 				ExampleMod.LOGGER.error("Failed to initialize Vosk STT model.", e);
@@ -71,24 +64,15 @@ public class VoskSttManager {
 	}
 
 	/**
-	 * Checks if 350ms have elapsed since the player stopped speaking, even if PTT button was released.
+	 * Called by AiCompanionVoicePlugin after silence gap.
+	 * Returns the current partial text and resets the buffer.
 	 */
-	public static void checkAndFlushSpeech() {
-		try {
-			if (!lastPartialText.isEmpty() && lastPartialText.length() > 3) {
-				long now = System.currentTimeMillis();
-				if (now - lastSpeechTimeMs > 350) {
-					String completedSpeech = lastPartialText;
-					lastPartialText = "";
-					ExampleMod.LOGGER.info("⏱️ Auto-flushed speech after silence: \"" + completedSpeech + "\"");
-					if (speechListener != null) {
-						speechListener.onSpeechRecognized(completedSpeech);
-					}
-				}
-			}
-		} catch (Exception e) {
-			ExampleMod.LOGGER.error("Error in checkAndFlushSpeech background timer:", e);
-		}
+	public static synchronized String flushPartial() {
+		if (lastPartialText.isBlank()) return "";
+		String result = lastPartialText;
+		lastPartialText = "";
+		if (recognizer != null) recognizer.reset();
+		return result;
 	}
 
 	/**
