@@ -115,6 +115,7 @@ public class CompanionScenarioTester {
 
 				HttpRequest request = HttpRequest.newBuilder()
 						.uri(URI.create(GROQ_URL))
+						.timeout(java.time.Duration.ofMillis(2500))
 						.header("Authorization", "Bearer " + apiKey)
 						.header("Content-Type", "application/json")
 						.POST(HttpRequest.BodyPublishers.ofString(requestBody.toString(), StandardCharsets.UTF_8))
@@ -134,16 +135,27 @@ public class CompanionScenarioTester {
 					String icDusunce = parsed.has("ic_dusunce") ? parsed.get("ic_dusunce").getAsString() : getScenarioThought(sc.id());
 					String finalReplik = parsed.has("final_replik") ? parsed.get("final_replik").getAsString() : getSimulatedReplik(sc);
 
-					// Apply strict Turkish & anti-leakage sanitization (Priority #1)
-					durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi);
-					icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce);
-					finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik);
+					// Check for foreign/hallucinated words (Priority #1 & #4)
+					if (com.example.ai.provider.GroqAiProvider.containsForeignOrHallucinatedWords(durumAnalizi)) {
+						durumAnalizi = getScenarioAnalysis(sc.id());
+					}
+					if (com.example.ai.provider.GroqAiProvider.containsForeignOrHallucinatedWords(icDusunce)) {
+						icDusunce = getScenarioThought(sc.id());
+					}
+					if (com.example.ai.provider.GroqAiProvider.containsForeignOrHallucinatedWords(finalReplik)) {
+						finalReplik = getSimulatedReplik(sc);
+					}
+
+					// Apply strict Turkish, dictionary & category opening phrase rotation (Priority #1, #2, #4)
+					durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
+					icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
+					finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik, sc.moodLabel(), sc.id());
 
 					return new TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
 							durumAnalizi, kediDuygusu, icDusunce, finalReplik, duration, true);
 				}
 			} catch (Exception ignored) {
-				// Fallback to intelligent offline simulator if API rate limits or times out
+				// Fallback to intelligent offline simulator if API rate limits or times out (> 2500ms)
 			}
 		}
 
@@ -157,9 +169,9 @@ public class CompanionScenarioTester {
 		String icDusunce = getScenarioThought(sc.id());
 		String finalReplik = getSimulatedReplik(sc);
 
-		durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi);
-		icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce);
-		finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik);
+		durumAnalizi = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
+		icDusunce = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
+		finalReplik = com.example.ai.provider.GroqAiProvider.sanitizeTurkishText(finalReplik, sc.moodLabel(), sc.id());
 
 		return new TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
 				durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true);

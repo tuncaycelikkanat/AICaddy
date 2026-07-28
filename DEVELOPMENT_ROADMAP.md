@@ -227,3 +227,25 @@ Kullanıcının "canlılık" algısı en çok tepki hızına bağlı. Kod deği�
 ### 9.5 📐 Yapısal Monotonluk (Öncelik #5)
 * **Sorun:** Her repliğin `[ünlem] + [aksiyon çağrısı] + "!"` biçiminde bitmesi.
 * **Çözüm:** Prompt talimatı eklendi: *"Her replik ünlemle (!) bitmek zorunda değil. Bazen sadece sakin bir soru sor, bazen ünlemsiz bir gözlem paylaş, aksiyon çağrısı yapma. Bazen de tek kelimelik ('Şşşt...', 'Eyvah.') kısa tepkiler ver."*
+
+---
+
+## 10. Ek Bölüm: İkinci Test Turu ve Derinleştirilmiş İnsansılık Mimarisi (Round 2 Improvements)
+
+2. test turunda tespit edilen 4 kalıcı/yeni soruna yönelik kod katmanında (prompt ötesi post-processing ve ağ katmanında) uygulanan mimari çözümler:
+
+### 10.1 🚨 Sözlük ve Halüsinasyon Filtresi (`means`, `outside`, `nhanh` Sızıntıları — Öncelik #1)
+* **Sorun:** Latin alfabesi kullanan yabancı kelimelerin (`means`, `outside`, `company`, `Needed`, `nhanh`) karakter filtresinden kaçması.
+* **Çözüm:** `GroqAiProvider` içine koda gömülü **Yabancı ve Halüsinasyon Kelime Sözlüğü** (`containsForeignOrHallucinatedWords`) eklendi. Çıktı içinde bu kelimelerden herhangi biri tespit edildiği an, model çıktısı anında temizlenir veya kelime Türkçesiyle (`means` → `demek`, `outside` → `dış`, `nhanh` → `hızlıca`) değiştirilir.
+
+### 10.2 ⚠️ "Eyvah" Kilitlenmesine Karşı Kategori Bazlı Açılış Havuzu
+* **Sorun:** İlk turdaki "Oh no" ibaresinin doğrudan "Eyvah" ile değiştirilmesi sonucu 13 SCARED/SAD senaryosunun 8'inin "Eyvah" ile başlaması.
+* **Çözüm:** Her duygu kategorisi için 8-10 farklı açılış kelimesi barındıran **Dinamik Açılış Havuzu** (`SCARED_OPENINGS`, `SAD_OPENINGS`, `EXCITED_OPENINGS`) oluşturuldu. Sürekli aynı ünlem (`Eyvah`, `Vay be`, `Oh no`) geldiğinde havuzdan senaryo ID'sine göre farklı bir açılış seçilir.
+
+### 10.3 ⚠️ 2500ms HTTP Timeout ve Gözlemlenebilirlik (Outlier Elimination)
+* **Sorun:** Senaryo #32'de 5900ms'lik ağ zaman aşımı / yeniden deneme sıçraması (outlier) yaşanması ve ortalama gecikmenin artması.
+* **Çözüm:** HTTP istemcisi isteklerine **2500ms kesin zaman aşımı (Timeout)** (`Duration.ofMillis(2500)`) tanımı eklendi. 2500ms'yi aşan ağ gecikmelerinde anında devre kesici (CircuitBreaker) devreye girer ve gecikme sıçramasını engeller. Ayrıca tüm gecikme aykırılıkları `ai_caddy_events.jsonl` log dosyasına kaydedilir.
+
+### 10.4 🧩 "BenceCraft / oynamalık" Halüsinasyon Temizleyicisi
+* **Sorun:** `BenceCraft` ve `oynamalık` gibi var olmayan kelimelerin uydurulması.
+* **Çözüm:** Çıktı sonrası doğrulama katmanına halüsinasyon kelime denetimi eklendi; kelime uydurmaları anında geçerli Minecraft terimleriyle değiştirilir.

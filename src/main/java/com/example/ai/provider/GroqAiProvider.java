@@ -99,6 +99,7 @@ public class GroqAiProvider implements AiProvider {
 
 		HttpRequest request = HttpRequest.newBuilder()
 				.uri(URI.create(GROQ_API_URL))
+				.timeout(java.time.Duration.ofMillis(2500))
 				.header("Authorization", "Bearer " + key)
 				.header("Content-Type", "application/json")
 				.POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
@@ -162,7 +163,6 @@ public class GroqAiProvider implements AiProvider {
 				}
 			}
 		});
-
 		try {
 			JsonObject parsed = JsonParser.parseString(accumulatedJson.toString()).getAsJsonObject();
 			if (parsed.has("durum_analizi")) {
@@ -175,11 +175,9 @@ public class GroqAiProvider implements AiProvider {
 
 		String fullReplik = PartialJsonExtractor.extractPartialReplik(accumulatedJson.toString());
 		if (fullReplik.isEmpty()) {
-			// Fallback if model didn't return proper final_replik schema
 			fullReplik = accumulatedJson.toString().trim();
 		}
 
-		// Check if there is any remaining text that wasn't spoken by sentence endings
 		java.util.List<String> allSentences = PartialJsonExtractor.extractCompletedSentences(fullReplik);
 		if (allSentences.isEmpty() && !fullReplik.isBlank()) {
 			com.example.ai.tts.TtsManager.speakSentenceAsync(null, fullReplik, isFirst[0]);
@@ -198,20 +196,71 @@ public class GroqAiProvider implements AiProvider {
 		return fullReplik;
 	}
 
+	public static boolean containsForeignOrHallucinatedWords(String text) {
+		if (text == null || text.isBlank()) return false;
+		String lower = " " + text.toLowerCase() + " ";
+		String[] blacklist = {
+				" means ", " outside ", " company ", " needed ", " nhanh ",
+				" iets ", " thật ", " completely ", " really ", " actually ",
+				" bencecraft ", " oynamalık ", " oyuncucomplex "
+		};
+		for (String bad : blacklist) {
+			if (lower.contains(bad)) return true;
+		}
+		return false;
+	}
+
 	public static String sanitizeTurkishText(String input) {
+		return sanitizeTurkishText(input, "", 0);
+	}
+
+	public static String sanitizeTurkishText(String input, String mood, int scenarioId) {
 		if (input == null) return "";
 		String clean = input
+				.replace(" means ", " demek ")
+				.replace(" outside ", " dış ")
+				.replace(" company ", " yoldaşlık ")
+				.replace(" Needed", " gerekli")
+				.replace(" needed", " gerekli")
+				.replace(" nhanh ", " hızlıca ")
+				.replace(" BenceCraft", " Çakmak")
+				.replace(" bencecraft", " çakmak")
+				.replace(" oynamalık", " kazmalık")
+				.replace(" iets ", " bir şey ")
+				.replace(" thật ", " ")
+				.replace(" OyuncuComplex", " Oyuncu")
+				.replace(" completely ", " tamamen ")
+				.replace(" really ", " gerçekten ")
+				.replace(" actually ", " aslında ")
 				.replace("Oh no", "Eyvah")
 				.replace("oh no", "eyvah")
 				.replace("Oh No", "Eyvah")
 				.replace("AmanTanrım", "Aman Allah'ım")
 				.replace("Aman Allahım", "Aman Allah'ım")
-				.replace("OyuncuComplex", "Oyuncu karmaşık")
-				.replace("完全", "tamamen ")
-				.replace("thật ", "")
-				.replace("iets ", "bir şey ");
-		// Remove non-Latin/Turkish Unicode script blocks (Han, Hangul, Cyrillic, Thai, etc.)
-		clean = clean.replaceAll("[^a-zA-Z0-9çÇğĞıIİöÖşŞüÜ.,!?'\"\\s\\-—:\\(\\)]", "");
+				.replace("完全", "tamamen ");
+
+		clean = clean.replaceAll("[^a-zA-Z0-9çÇğĞıIİöÖşŞüÜ.,!?'\"\\s\\-—:\\(\\)]", "").trim();
+
+		String[] SCARED_OPENINGS = {
+				"Dikkat et, ", "Aman dur, ", "Sakın kımıldama, ", "Koş koş, ", "Tehlike büyük, ",
+				"Uzak dur, ", "Yüreğim hopladı, ", "Arkana bakma, ", "Hadi kaçalım, ", "Sakin ol, "
+		};
+		String[] SAD_OPENINGS = {
+				"Canın sağ olsun, ", "Çok üzüldüm, ", "Olsun be dostum, ", "İçim parçalandı, ", "Geçecek, ",
+				"Takma kafana, ", "Biliyorum çok zor, ", "Yanındayım, ", "Moralini bozma, ", "Pes etmek yok, "
+		};
+		String[] EXCITED_OPENINGS = {
+				"Harika bir an, ", "Helal olsun, ", "Yaşasın, ", "Muazzam iş, ", "İşte bu, ", "Süper, "
+		};
+
+		if ("SCARED".equalsIgnoreCase(mood) && (clean.startsWith("Eyvah") || clean.startsWith("eyvah") || clean.startsWith("Oh no"))) {
+			clean = clean.replaceFirst("^(?i)(Eyvah|Oh no)[, ]*", SCARED_OPENINGS[Math.abs(scenarioId) % SCARED_OPENINGS.length]);
+		} else if ("SAD".equalsIgnoreCase(mood) && (clean.startsWith("Eyvah") || clean.startsWith("eyvah") || clean.startsWith("Oh no"))) {
+			clean = clean.replaceFirst("^(?i)(Eyvah|Oh no)[, ]*", SAD_OPENINGS[Math.abs(scenarioId) % SAD_OPENINGS.length]);
+		} else if ("EXCITED".equalsIgnoreCase(mood) && (clean.startsWith("Vay be") || clean.startsWith("Vay canına") || clean.startsWith("Vay"))) {
+			clean = clean.replaceFirst("^(?i)(Vay be|Vay canına|Vay)[, ]*", EXCITED_OPENINGS[Math.abs(scenarioId) % EXCITED_OPENINGS.length]);
+		}
+
 		return clean.trim();
 	}
 }
