@@ -159,9 +159,14 @@ public class AiBrainManager {
 		sb.append("- Türkçe konuş. Doğal, samimi, spontane.\n");
 		sb.append("- Ruh haline göre konuş — şu an ").append(CompanionMoodEngine.getCurrentMood().getLabel()).append(" hissediyorsun.\n\n");
 
-		// ── Output format ──
-		sb.append("ÇIKTI FORMATI — SADECE bu JSON:\n");
-		sb.append("{\"final_replik\": \"...\"}\n\n");
+		// ── Output format (Multi-Agent Single-Call Structured JSON) ──
+		sb.append("ÇIKTI FORMATI — SADECE bu JSON (Tek çağrıda hem taktiksel analiz hem kişilikli yanıt):\n");
+		sb.append("{\n");
+		sb.append("  \"durum_analizi\": \"Oyuncunun durumu, canı, konumu, tehlike var mı kısa analiz\",\n");
+		sb.append("  \"kedi_duygusu\": \"EXCITED / SCARED / SAD / PROUD / BORED / FRUSTRATED / CURIOUS / TENSE\",\n");
+		sb.append("  \"ic_dusunce\": \"Kedi'nin oyuncuyla ilgili o anki içsel tepkisi/düşüncesi\",\n");
+		sb.append("  \"final_replik\": \"Oyuncuya söylenecek 1-2 cümlelik spontane kedi repliği\"\n");
+		sb.append("}\n\n");
 
 		// ── Player speech ──
 		sb.append(player.getScoreboardName()).append(" şimdi şunu dedi/yaptı: \"").append(playerSpeech).append("\"");

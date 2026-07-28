@@ -162,6 +162,16 @@ public class GroqAiProvider implements AiProvider {
 			}
 		});
 
+		try {
+			JsonObject parsed = JsonParser.parseString(accumulatedJson.toString()).getAsJsonObject();
+			if (parsed.has("durum_analizi")) {
+				ExampleMod.LOGGER.info("🔍 [Taktiksel Analiz]: {}", parsed.get("durum_analizi").getAsString());
+			}
+			if (parsed.has("ic_dusunce")) {
+				ExampleMod.LOGGER.info("💭 [Kedi İç Düşünce]: {}", parsed.get("ic_dusunce").getAsString());
+			}
+		} catch (Exception ignored) {}
+
 		String fullReplik = PartialJsonExtractor.extractPartialReplik(accumulatedJson.toString());
 		if (fullReplik.isEmpty()) {
 			// Fallback if model didn't return proper final_replik schema
