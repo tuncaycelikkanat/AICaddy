@@ -24,7 +24,7 @@ public final class SharedPromptRules {
 			- Robotik listeler yok ("Adım 1, Adım 2" gibi).
 			- Taktik/ders verme. Sadece paylaş, tepki ver, hisset.
 			- Her replik ünlemle (!) bitmek zorunda değil. Bazen sakin bir soru sor, bazen ünlemsiz bir gözlem paylaş.
-			- Sadece VERİLEN oyun bağlamındaki gerçek sayısal veriyi (koordinat, can, envanter miktarı vb.) kullan. Bağlamda olmayan yüzde, oran, "verim puanı" gibi sahte istatistik ASLA uydurma.
+			- Sadece VERİLEN oyun bağlamındaki gerçek sayısal veriyi (koordinat, can, envanter miktarı vb.) kullan. Bağlamda VERİLMEYEN hiçbir koordinat, yüzde, oran veya sayısal ölçüm YAZMA — bu kural genel istatistiklerin yanı sıra konum/koordinat bilgisini de kapsar.
 			""";
 
 	public static final String SAD_MOOD_RULE = """
@@ -46,7 +46,7 @@ public final class SharedPromptRules {
 		if (recentPhrases == null || recentPhrases.isEmpty()) {
 			return "";
 		}
-		return "- Şu açılış kelimelerini/kalıplarını son zamanlarda kullandın, BUNLARI TEKRAR ETME: " +
+		return "- Şu açılış kelimelerini ve kalıp ifadeleri son zamanlarda kullandın, BUNLARI YA DA CÜMLE İÇİ BENZERLERİNİ TEKRAR ETME: " +
 				String.join(", ", recentPhrases) + "\n";
 	}
 
@@ -59,5 +59,42 @@ public final class SharedPromptRules {
 				  "final_replik": "Kedi'nin söyleyeceği doğal Türkçe replik — SADECE Türkçe kelime, yabancı kelime/ünlem kesinlikle yasak"
 				}
 				""".formatted(mood);
+	}
+
+	/**
+	 * Programmatically verifies if responseText contains hallucinated numbers (e.g. coordinates, %, stats)
+	 * that do not exist in situationText.
+	 */
+	public static boolean containsHallucinatedNumbers(String responseText, String situationText) {
+		if (responseText == null || responseText.isBlank()) return false;
+		java.util.regex.Pattern numPattern = java.util.regex.Pattern.compile("\\b(-?\\d{2,}(?:\\.\\d+)?|\\d+%)\\b");
+		java.util.regex.Matcher m = numPattern.matcher(responseText);
+		while (m.find()) {
+			String foundNum = m.group(1).replace("%", "");
+			if (situationText == null || !situationText.contains(foundNum)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Checks if any 4-gram (consecutive 4 words) in text appears in any of the past replies.
+	 */
+	public static boolean has4GramRepetition(String text, Collection<String> pastReplies) {
+		if (text == null || text.isBlank() || pastReplies == null || pastReplies.isEmpty()) return false;
+		String[] words = text.toLowerCase().replaceAll("[^a-zçğıöşü0-9\\s]", "").split("\\s+");
+		if (words.length < 4) return false;
+		for (int i = 0; i <= words.length - 4; i++) {
+			String gram = words[i] + " " + words[i+1] + " " + words[i+2] + " " + words[i+3];
+			if (gram.length() < 10) continue;
+			for (String past : pastReplies) {
+				String normPast = past.toLowerCase().replaceAll("[^a-zçğıöşü0-9\\s]", "");
+				if (normPast.contains(gram)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 }

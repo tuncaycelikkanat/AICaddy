@@ -45,8 +45,13 @@ public class CompanionScenarioTester {
 			String icDusunce,
 			String finalReplik,
 			long latencyMs,
-			boolean success
-	) {}
+			boolean success,
+			boolean isRealApiCall
+	) {
+		public TestResult(int id, String category, String moodLabel, String situationPrompt, String durumAnalizi, String kediDuygusu, String icDusunce, String finalReplik, long latencyMs, boolean success) {
+			this(id, category, moodLabel, situationPrompt, durumAnalizi, kediDuygusu, icDusunce, finalReplik, latencyMs, success, true);
+		}
+	}
 
 	public static void main(String[] args) {
 		System.out.println("================================================================");

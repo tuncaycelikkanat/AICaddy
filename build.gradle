@@ -126,7 +126,16 @@ task runMultiModelTest(type: JavaExec) {
 
 task runGemini50Test(type: JavaExec) {
 	group = 'verification'
-	description = 'Runs the 50 Minecraft scenario AI Companion test using Gemini (Google 1.5-Pro Persona) and generates report'
+	description = 'Runs the 50 Minecraft scenario AI Companion test using Gemini 3.1 Flash Lite and generates report'
 	classpath = sourceSets.main.runtimeClasspath
 	mainClass = 'com.example.ai.test.Gemini50ScenarioTester'
+	systemProperty 'gemini.model', 'gemini-3.1-flash-lite'
+}
+
+task runGeminiFlash50Test(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the 50 Minecraft scenario AI Companion test using Gemini Flash (Standard) and generates report'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.Gemini50ScenarioTester'
+	systemProperty 'gemini.model', 'gemini-flash-latest'
 }

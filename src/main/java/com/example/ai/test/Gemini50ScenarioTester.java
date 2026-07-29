@@ -26,8 +26,10 @@ import java.util.concurrent.ConcurrentLinkedDeque;
  */
 public class Gemini50ScenarioTester {
 
+	private static final String MODEL_NAME = System.getProperty("gemini.model", "gemini-3.1-flash-lite");
+
 	private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
-			.connectTimeout(Duration.ofSeconds(3))
+			.connectTimeout(Duration.ofSeconds(15))
 			.build();
 
 	private static final Map<String, Deque<String>> RECENT_OPENING_PHRASES_BY_MOOD = new ConcurrentHashMap<>();
@@ -43,9 +45,9 @@ public class Gemini50ScenarioTester {
 		if (!firstWord.isEmpty()) {
 			String key = (moodLabel != null && !moodLabel.isEmpty()) ? moodLabel : "DEFAULT";
 			Deque<String> queue = RECENT_OPENING_PHRASES_BY_MOOD.computeIfAbsent(key, k -> new ConcurrentLinkedDeque<>());
-			queue.add(firstWord);
-			while (queue.size() > 8) {
-				queue.pollFirst();
+			queue.addLast(firstWord);
+			while (queue.size() > 5) {
+				queue.removeFirst();
 			}
 		}
 	}
@@ -58,7 +60,7 @@ public class Gemini50ScenarioTester {
 
 	public static void main(String[] args) {
 		System.out.println("================================================================");
-		System.out.println(" 🌟 AI CADDY — GEMİNİ (GOOGLE 1.5-PRO) 50 SENARYO TESTİ 🌟");
+		System.out.println(" 🌟 AI CADDY — GEMİNİ (" + MODEL_NAME + ") 50 SENARYO VE RUH HALİ BENCHMARK 🌟");
 		System.out.println("================================================================");
 
 		List<Scenario> scenarios = CompanionScenarioTester.build50Scenarios();
@@ -68,13 +70,21 @@ public class Gemini50ScenarioTester {
 		long startTime = System.currentTimeMillis();
 
 		for (Scenario sc : scenarios) {
-			System.out.printf("[%02d/50] (%-10s) Senaryo #%-2d çalıştırılıyor (Gemini Persona)... ",
-					sc.id(), sc.moodLabel(), sc.id());
+			System.out.printf("[%02d/50] (%-10s) Senaryo #%-2d çalıştırılıyor (%s Persona)... ",
+					sc.id(), sc.moodLabel(), sc.id(), MODEL_NAME);
 			CompanionScenarioTester.TestResult res = executeGeminiScenario(sc, apiKey);
 			results.add(res);
-			System.out.printf("✔ Tamamlandı (%d ms) -> Replik: \"%s\"%n",
-					res.latencyMs(), truncate(res.finalReplik(), 55));
-			try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+			System.out.printf("✔ Tamamlandı (%d ms) [%s] -> Replik: \"%s\"%n",
+					res.latencyMs(),
+					res.isRealApiCall() ? "CANLI API" : "SIMULATION",
+					truncate(res.finalReplik(), 55));
+			try {
+				if (apiKey != null && !apiKey.isEmpty() && res.isRealApiCall()) {
+					Thread.sleep(2600); // Optimized for speed without hitting RPM limits
+				} else {
+					Thread.sleep(100);
+				}
+			} catch (InterruptedException ignored) {}
 		}
 
 		long totalDurationMs = System.currentTimeMillis() - startTime;
@@ -89,53 +99,63 @@ public class Gemini50ScenarioTester {
 		long start = System.currentTimeMillis();
 
 		if (apiKey != null && !apiKey.isEmpty()) {
-			try {
-				String prompt = CompanionScenarioTester.buildSystemPrompt(sc);
-				String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
-				JsonObject textPart = new JsonObject();
-				textPart.addProperty("text", prompt + "\n\n[DURUM]: " + sc.situationPrompt() + "\nLütfen JSON çıktısı ver.");
-				JsonObject contentObj = new JsonObject();
-				contentObj.add("parts", new com.google.gson.JsonArray());
-				contentObj.getAsJsonArray("parts").add(textPart);
-				JsonObject requestBody = new JsonObject();
-				requestBody.add("contents", new com.google.gson.JsonArray());
-				requestBody.getAsJsonArray("contents").add(contentObj);
+			for (int attempt = 1; attempt <= 3; attempt++) {
+				try {
+					String prompt = CompanionScenarioTester.buildSystemPrompt(sc);
+					String url = "https://generativelanguage.googleapis.com/v1beta/models/" + MODEL_NAME + ":generateContent?key=" + apiKey;
+					JsonObject textPart = new JsonObject();
+					textPart.addProperty("text", prompt + "\n\n[DURUM]: " + sc.situationPrompt() + "\nLütfen JSON çıktısı ver.");
+					JsonObject contentObj = new JsonObject();
+					contentObj.add("parts", new com.google.gson.JsonArray());
+					contentObj.getAsJsonArray("parts").add(textPart);
+					JsonObject requestBody = new JsonObject();
+					requestBody.add("contents", new com.google.gson.JsonArray());
+					requestBody.getAsJsonArray("contents").add(contentObj);
 
-				HttpRequest request = HttpRequest.newBuilder()
-						.uri(URI.create(url))
-						.header("Content-Type", "application/json")
-						.POST(HttpRequest.BodyPublishers.ofString(requestBody.toString(), StandardCharsets.UTF_8))
-						.build();
+					HttpRequest request = HttpRequest.newBuilder()
+							.uri(URI.create(url))
+							.header("Content-Type", "application/json")
+							.POST(HttpRequest.BodyPublishers.ofString(requestBody.toString(), StandardCharsets.UTF_8))
+							.build();
 
-				HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-				long duration = System.currentTimeMillis() - start;
+					HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
 
-				if (response.statusCode() == 200) {
-					JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
-					String text = root.getAsJsonArray("candidates").get(0).getAsJsonObject()
-							.getAsJsonObject("content").getAsJsonArray("parts").get(0).getAsJsonObject()
-							.get("text").getAsString();
+					if (response.statusCode() == 200) {
+						long duration = System.currentTimeMillis() - start;
+						JsonObject root = JsonParser.parseString(response.body()).getAsJsonObject();
+						String text = root.getAsJsonArray("candidates").get(0).getAsJsonObject()
+								.getAsJsonObject("content").getAsJsonArray("parts").get(0).getAsJsonObject()
+								.get("text").getAsString();
 
-					JsonObject parsed = JsonParser.parseString(text).getAsJsonObject();
-					String durumAnalizi = parsed.has("durum_analizi") ? parsed.get("durum_analizi").getAsString() : getGeminiAnalysis(sc.id());
-					String icDusunce = parsed.has("ic_dusunce") ? parsed.get("ic_dusunce").getAsString() : getGeminiThought(sc.id());
-					String finalReplik = parsed.has("final_replik") ? parsed.get("final_replik").getAsString() : getGeminiReplik(sc);
+						text = text.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
+						JsonObject parsed = JsonParser.parseString(text).getAsJsonObject();
+						String durumAnalizi = parsed.has("durum_analizi") ? parsed.get("durum_analizi").getAsString() : getGeminiAnalysis(sc.id());
+						String icDusunce = parsed.has("ic_dusunce") ? parsed.get("ic_dusunce").getAsString() : getGeminiThought(sc.id());
+						String finalReplik = parsed.has("final_replik") ? parsed.get("final_replik").getAsString() : getGeminiReplik(sc);
 
-					durumAnalizi = GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
-					icDusunce = GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
-					finalReplik = GroqAiProvider.sanitizeTurkishText(finalReplik, sc.moodLabel(), sc.id());
-					recordOpeningPhrase(finalReplik, sc.moodLabel());
+						durumAnalizi = GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
+						icDusunce = GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
+						finalReplik = GroqAiProvider.sanitizeTurkishText(finalReplik, sc.moodLabel(), sc.id());
+						recordOpeningPhrase(finalReplik, sc.moodLabel());
 
-					return new CompanionScenarioTester.TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
-							durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true);
+						return new CompanionScenarioTester.TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
+								durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true, true);
+					} else if (response.statusCode() == 429 || response.statusCode() == 503 || response.statusCode() == 500) {
+						Thread.sleep(3000L * attempt);
+					} else {
+						System.err.println(" [API HATA KODU: " + response.statusCode() + "] " + response.body());
+						break;
+					}
+				} catch (Exception e) {
+					System.err.println(" [İSTİSNA: " + e.getMessage() + "]");
 				}
-			} catch (Exception ignored) {}
+			}
 		}
 
 		long duration = System.currentTimeMillis() - start + 210;
 		String durumAnalizi = getGeminiAnalysis(sc.id());
 		String icDusunce = getGeminiThought(sc.id());
-		String finalReplik = getGeminiReplik(sc);
+		String finalReplik = getGeminiReplik(sc) + " [OFFLINE SIMULATED FALLBACK]";
 
 		durumAnalizi = GroqAiProvider.sanitizeTurkishText(durumAnalizi, sc.moodLabel(), sc.id());
 		icDusunce = GroqAiProvider.sanitizeTurkishText(icDusunce, sc.moodLabel(), sc.id());
@@ -143,7 +163,100 @@ public class Gemini50ScenarioTester {
 		recordOpeningPhrase(finalReplik, sc.moodLabel());
 
 		return new CompanionScenarioTester.TestResult(sc.id(), sc.category(), sc.moodLabel(), sc.situationPrompt(),
-				durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true);
+				durumAnalizi, sc.moodLabel(), icDusunce, finalReplik, duration, true, false);
+	}
+
+	private static boolean containsForeignWords(String text) {
+		if (text == null || text.isBlank()) return false;
+		String lower = text.toLowerCase();
+		if (lower.matches(".*\\b(oh|no|yes|means|inside|outside|company|needed|iets|thật|wirklich|wow)\\b.*")) return true;
+		for (char c : text.toCharArray()) {
+			if ((c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x0400 && c <= 0x04FF) || (c >= 0x3040 && c <= 0x30FF)) return true;
+		}
+		return false;
+	}
+
+	private static void generateGeminiMarkdownReport(List<CompanionScenarioTester.TestResult> results, long totalDurationMs) {
+		int realApiCount = (int) results.stream().filter(CompanionScenarioTester.TestResult::isRealApiCall).count();
+		int avgLatency = (int) results.stream().mapToLong(CompanionScenarioTester.TestResult::latencyMs).average().orElse(0L);
+		String latencyStatus = avgLatency < 500 ? "✅ ÇOK HIZLI (<500ms)" :
+				(avgLatency <= 1000 ? "🟢 KABUL EDİLEBİLİR (500-1000ms)" : "⚠️ AĞ / LLM GECİKMESİ (>1000ms)");
+
+		int cleanLangCount = 0;
+		int cleanHallucinationCount = 0;
+		int cleanNgramCount = 0;
+		Map<String, List<String>> moodHistory = new HashMap<>();
+
+		for (CompanionScenarioTester.TestResult r : results) {
+			boolean foreignWord = containsForeignWords(r.durumAnalizi()) || containsForeignWords(r.icDusunce()) || containsForeignWords(r.finalReplik());
+			if (!foreignWord) cleanLangCount++;
+
+			boolean hallucination = SharedPromptRules.containsHallucinatedNumbers(r.durumAnalizi() + " " + r.icDusunce() + " " + r.finalReplik(), r.situationPrompt());
+			if (!hallucination) cleanHallucinationCount++;
+
+			List<String> history = moodHistory.computeIfAbsent(r.moodLabel(), k -> new ArrayList<>());
+			boolean ngramRepeat = SharedPromptRules.has4GramRepetition(r.finalReplik(), history);
+			if (!ngramRepeat) cleanNgramCount++;
+			history.add(r.finalReplik());
+		}
+
+		boolean isStandardFlash = MODEL_NAME.toLowerCase().contains("flash") && !MODEL_NAME.toLowerCase().contains("lite");
+		String modelDisplayName = isStandardFlash ?
+				"Google Gemini Flash (Standart, 1500 RPD / 15 RPM Optimize)" :
+				"Google Gemini 3.1 Flash Lite (Yüksek Hız, 500 RPD Optimize)";
+
+		StringBuilder md = new StringBuilder();
+		md.append("# 🌟 AI CADDY — GEMİNİ (").append(MODEL_NAME).append(") 50 SENARYO BENCHMARK VE RUH HALİ RAPORU\n\n");
+		md.append("**Test Tarihi:** ").append(java.time.ZonedDateTime.now()).append("\n");
+		md.append("**Kullanılan Model / Persona:** ").append(modelDisplayName).append("\n");
+		md.append("**Toplam Senaryo:** 50 (8 Ruh Hali Kategorisi)\n");
+		md.append("**Gerçek Canlı API Yanıtı Sayısı:** ").append(realApiCount).append(" / 50 (%").append(realApiCount * 2).append(")\n");
+		md.append("**Toplam Çalışma Süresi:** ").append(String.format("%.1f saniye", totalDurationMs / 1000.0)).append("\n\n");
+
+		md.append("## 📊 Kalite ve Kurallara Uyum Özet Tablosu (Programatik Bağımsız Doğrulama)\n\n");
+		md.append("| Metrik | Hedef / Kural | Gemini Performans Sonucu | Durum |\n");
+		md.append("| :--- | :--- | :---: | :---: |\n");
+		md.append("| **Dil Tutarlılığı (Türkçe)** | %100 SADECE Türkçe | **%").append(cleanLangCount * 2).append(" (").append(cleanLangCount).append("/50)** | ").append(cleanLangCount == 50 ? "✅ KUSURSUZ" : "⚠️ YABANCI KELİME SIZINTISI").append(" |\n");
+		md.append("| **Halüsinasyon (Sahte Sayı/Koordinat)** | 0 sahte istatistik | **%").append(cleanHallucinationCount * 2).append(" (").append(cleanHallucinationCount).append("/50 Temiz)** | ").append(cleanHallucinationCount == 50 ? "✅ KUSURSUZ" : "⚠️ SAHTE SAYI TESPİTİ").append(" |\n");
+		md.append("| **Anti-Tekrar (4-Gram Özgünlük)** | N-gram tekrarı = 0 | **%").append(cleanNgramCount * 2).append(" (").append(cleanNgramCount).append("/50 Özgün)** | ").append(cleanNgramCount == 50 ? "✅ KUSURSUZ ÇEŞİTLİLİK" : "⚠️ CÜMLE İÇİ TEKRAR VAR").append(" |\n");
+		md.append("| **Ortalama Yanıt Gecikmesi** | < 500 ms | **").append(avgLatency).append(" ms** | ").append(latencyStatus).append(" |\n");
+		md.append("| **Gerçek Canlı API Oranı** | %100 Gerçek LLM Çıktısı | **%").append(realApiCount * 2).append(" (").append(realApiCount).append("/50)** | ").append(realApiCount == 50 ? "✅ TAMAMI CANLI API" : "⚠️ KISMEN FALLBACK").append(" |\n\n");
+
+		md.append("---\n\n## 📝 50 Senaryonun Tam Sonuç Listesi\n\n");
+
+		String currentCategory = "";
+		for (CompanionScenarioTester.TestResult r : results) {
+			if (!r.category().equals(currentCategory)) {
+				currentCategory = r.category();
+				md.append("### 🏷️ Kategori: ").append(currentCategory).append("\n\n");
+			}
+
+			md.append("#### Senaryo #").append(r.id()).append(" [").append(r.moodLabel()).append("] - [").append(r.isRealApiCall() ? "CANLI API" : "SIMULATION FALLBACK").append("]\n");
+			md.append("> **Durum:** *\"").append(r.situationPrompt()).append("\"*\n\n");
+			md.append("- **Durum Analizi (`durum_analizi`):** ").append(r.durumAnalizi()).append("\n");
+			md.append("- **Kedi Düşüncesi (`ic_dusunce`):** ").append(r.icDusunce()).append("\n");
+			md.append("- **Gemini Replik (`final_replik`):** **\"").append(r.finalReplik()).append("\"** *(Süre: ").append(r.latencyMs()).append(" ms)*\n\n");
+			md.append("---\n\n");
+		}
+
+		String content = md.toString();
+		String reportFileName = isStandardFlash ?
+				"GEMINI_FLASH_50_SCENARIO_TEST_REPORT.md" : "GEMINI_50_SCENARIO_TEST_REPORT.md";
+		String brainReportName = isStandardFlash ?
+				"50_scenario_test_report_gemini_flash.md" : "50_scenario_test_report_gemini.md";
+
+		try {
+			Files.writeString(Path.of(reportFileName), content, StandardCharsets.UTF_8);
+			File artDir = new File("/home/tuncay/.gemini/antigravity/brain/5836e424-c6d4-49da-99b9-c8c6e0206661");
+			if (artDir.exists()) {
+				Files.writeString(Path.of("/home/tuncay/.gemini/antigravity/brain/5836e424-c6d4-49da-99b9-c8c6e0206661/" + brainReportName), content, StandardCharsets.UTF_8);
+			}
+			System.out.println("✔ Gemini 50 Senaryo Raporu başarıyla oluşturuldu:");
+			System.out.println("  1. " + reportFileName);
+			System.out.println("  2. " + brainReportName + " (Antigravity Brain)");
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	private static String readGeminiApiKey() {
@@ -327,54 +440,6 @@ public class Gemini50ScenarioTester {
 			case 49 -> "Meşalemiz bitti ve ortalık zifiri karanlık... Elimden tut, yavaşça geri adım atalım";
 			default -> "Kalbim yerinden çıkacak! Çok az canımız kaldı, hadi başarabilirsin eve dayan!";
 		};
-	}
-
-	private static void generateGeminiMarkdownReport(List<CompanionScenarioTester.TestResult> results, long totalDurationMs) {
-		StringBuilder md = new StringBuilder();
-		md.append("# 🌟 AI CADDY — GEMİNİ 3.1 FLASH LITE (500 RPD / 15 RPM) 50 SENARYO BENCHMARK VE RUH HALİ RAPORU\n\n");
-		md.append("**Test Tarihi:** ").append(java.time.ZonedDateTime.now()).append("\n");
-		md.append("**Kullanılan Model / Persona:** Google Gemini 3.1 Flash Lite (Yüksek Hız, 500 RPD Optimize Can Yoldaşı)\n");
-		md.append("**Toplam Senaryo:** 50 (8 Ruh Hali Kategorisi)\n");
-		md.append("**Toplam Çalışma Süresi:** ").append(String.format("%.1f saniye", totalDurationMs / 1000.0)).append("\n\n");
-
-		md.append("## 📊 Kalite ve Kurallara Uyum Özet Tablosu\n\n");
-		md.append("| Metrik | Hedef / Kural | Gemini Performans Sonucu | Durum |\n");
-		md.append("| :--- | :--- | :---: | :---: |\n");
-		md.append("| **Dil Tutarlılığı (Türkçe)** | %100 SADECE Türkçe (Yabancı Kelime = 0) | **%100** | ✅ KUSURSUZ |\n");
-		md.append("| **Halüsinasyon (Sahte Sayı/Oran)** | 0 sahte istatistik | **0** | ✅ KUSURSUZ |\n");
-		md.append("| **Anti-Tekrar (Kategori Kuyruğu)** | Mood başına ayrı açılış kelimesi geçmişi | **%100 Çeşitlilik** | ✅ KUSURSUZ |\n");
-		md.append("| **Ortalama Yanıt Gecikmesi** | < 400 ms | **").append((int)(totalDurationMs/50.0)).append(" ms** | ✅ ÇOK HIZLI |\n\n");
-
-		md.append("---\n\n## 📝 50 Senaryonun Tam Sonuç Listesi\n\n");
-
-		String currentCategory = "";
-		for (CompanionScenarioTester.TestResult r : results) {
-			if (!r.category().equals(currentCategory)) {
-				currentCategory = r.category();
-				md.append("### 🏷️ Kategori: ").append(currentCategory).append("\n\n");
-			}
-
-			md.append("#### Senaryo #").append(r.id()).append(" [").append(r.moodLabel()).append("]\n");
-			md.append("> **Durum:** *\"").append(r.situationPrompt()).append("\"*\n\n");
-			md.append("- **Durum Analizi (`durum_analizi`):** ").append(r.durumAnalizi()).append("\n");
-			md.append("- **Kedi Düşüncesi (`ic_dusunce`):** ").append(r.icDusunce()).append("\n");
-			md.append("- **Gemini Replik (`final_replik`):** **\"").append(r.finalReplik()).append("\"** *(Süre: ").append(r.latencyMs()).append(" ms)*\n\n");
-			md.append("---\n\n");
-		}
-
-		String content = md.toString();
-		try {
-			Files.writeString(Path.of("GEMINI_50_SCENARIO_TEST_REPORT.md"), content, StandardCharsets.UTF_8);
-			File artDir = new File("/home/tuncay/.gemini/antigravity/brain/5836e424-c6d4-49da-99b9-c8c6e0206661");
-			if (artDir.exists()) {
-				Files.writeString(Path.of("/home/tuncay/.gemini/antigravity/brain/5836e424-c6d4-49da-99b9-c8c6e0206661/50_scenario_test_report_gemini.md"), content, StandardCharsets.UTF_8);
-			}
-			System.out.println("✔ Gemini 50 Senaryo Raporu başarıyla oluşturuldu:");
-			System.out.println("  1. GEMINI_50_SCENARIO_TEST_REPORT.md");
-			System.out.println("  2. 50_scenario_test_report_gemini.md (Antigravity Brain)");
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
 	}
 
 	private static String truncate(String text, int maxLen) {
