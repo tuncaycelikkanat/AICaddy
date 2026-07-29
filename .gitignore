@@ -52,3 +52,8 @@ replay_*.log
 # logs
 logs/
 *.jsonl
+
+# reports & markdown files (except README)
+*.md
+!README.md
+!readme.md
