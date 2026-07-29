@@ -54,8 +54,16 @@ public class GeminiAiProvider implements AiProvider {
 		return null;
 	}
 
+	private static final com.example.ai.resilience.CircuitBreaker GEMINI_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("GeminiAPI", 3, 60_000L);
+
 	@Override
 	public CompletableFuture<String> generateResponseAsync(String systemPrompt, String userMessage) {
+		if (GEMINI_BREAKER.isOpen()) {
+			ExampleMod.LOGGER.warn("Gemini API devre kesicisi açık - istek engellendi (cooldown bekleniyor). Canned Fallback devrede.");
+			return CompletableFuture.completedFuture(com.example.ai.resilience.CannedFallbackProvider.getCannedFallback());
+		}
+
 		String key = getApiKey();
 		if (key == null || key.isEmpty()) {
 			ExampleMod.LOGGER.warn("Gemini API key is missing. Add it to config/gemini_api_key.txt.");
@@ -88,19 +96,17 @@ public class GeminiAiProvider implements AiProvider {
 		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
+						GEMINI_BREAKER.recordFailure();
 						ExampleMod.LOGGER.error("Gemini API error code " + response.statusCode() + ": " + response.body());
-						if (response.statusCode() == 429) {
-							return "Miyav! (Çok hızlı konuştuk, Google kotam birkaç saniyelik doldu, biraz bekle!)";
-						} else if (response.statusCode() == 400 || response.statusCode() == 403 || response.statusCode() == 404) {
-							return "Miyav? (API anahtarımla veya model adıyla ilgili bir sıkıntı var, kontrol eder misin?)";
-						}
-						return "Miyav... (Google sunucusuna ulaşırken bir aksilik oldu: " + response.statusCode() + ")";
+						return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 					}
+					GEMINI_BREAKER.recordSuccess();
 					return extractTextFromJson(response.body());
 				})
 				.exceptionally(ex -> {
+					GEMINI_BREAKER.recordFailure();
 					ExampleMod.LOGGER.error("Gemini API request failed.", ex);
-					return "Miyav! (İnternet bağlantımız kesilmiş olabilir)";
+					return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 				});
 	}
 

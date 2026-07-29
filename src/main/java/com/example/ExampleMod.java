@@ -24,8 +24,8 @@ public class ExampleMod implements ModInitializer {
 		ModEntities.register();
 		ModItems.register();
 
-		// Initialize Vosk STT engine asynchronously.
-		VoskSttManager.initialize();
+		// Initialize STT manager asynchronously.
+		com.example.voice.SttManager.initialize();
 
 		// Initialize SQLite persistent player memory store.
 		com.example.ai.memory.PlayerMemoryStore.init();
@@ -66,6 +66,19 @@ public class ExampleMod implements ModInitializer {
 						context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§e🐱 [Kedi]: §fTamam, ne konuşmuşsak sildim. Sıfırdan başlıyoruz!"), false);
 						return 1;
 					}))
+					.then(net.minecraft.commands.Commands.literal("hafiza").executes(context -> {
+						net.minecraft.server.level.ServerPlayer p = context.getSource().getPlayerOrException();
+						int score = com.example.ai.memory.PlayerMemoryStore.getAffinityScore(p.getUUID());
+						String tier = com.example.ai.memory.PlayerMemoryStore.getAffinityTierLabel(score);
+						java.util.List<String> ms = com.example.ai.memory.PlayerMemoryStore.getMajorMilestones(p.getUUID());
+						context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§e🐱 [Kedi Hafıza] §aSamimiyet Seviyesi: §f" + tier), false);
+						if (!ms.isEmpty()) {
+							context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§e🐱 [Kalıcı Başarılar] §f" + String.join(", ", ms)), false);
+						} else {
+							context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal("§7🐱 [Kalıcı Başarılar] §fHenüz kaydedilmiş büyük bir başarımız yok."), false);
+						}
+						return 1;
+					}))
 					.then(net.minecraft.commands.Commands.literal("ses")
 							.then(net.minecraft.commands.Commands.literal("aç").executes(context -> {
 								com.example.ai.tts.TtsManager.setTtsEnabled(true);
@@ -90,6 +103,29 @@ public class ExampleMod implements ModInitializer {
 								com.example.ai.debug.CompanionDebugLogger.setEnabled(false);
 								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
 									"§8[DEBUG] §c❌ Debug modu kapatıldı."
+								), false);
+								return 1;
+							}))
+					)
+					.then(net.minecraft.commands.Commands.literal("stt")
+							.executes(context -> {
+								String aktif = com.example.voice.SttManager.getProviderDisplayName(com.example.voice.SttManager.getActiveProviderId());
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+									"§e🎙️ [Kedi Ses Tanıma]: §aEtkin Motor: §f" + aktif
+								), false);
+								return 1;
+							})
+							.then(net.minecraft.commands.Commands.literal("varsayilan").executes(context -> {
+								com.example.voice.SttManager.setActiveProviderId("default");
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+									"§e🎙️ [Kedi]: §fSes tanıma motoru §aVarsayılan Yerel Vosk §folarak ayarlandı."
+								), false);
+								return 1;
+							}))
+							.then(net.minecraft.commands.Commands.literal("groq").executes(context -> {
+								com.example.voice.SttManager.setActiveProviderId("groq_whisper");
+								context.getSource().sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+									"§e🎙️ [Kedi]: §fSes tanıma motoru §aGroq Bulut Whisper (%99 Türkçe) §folarak ayarlandı."
 								), false);
 								return 1;
 							}))

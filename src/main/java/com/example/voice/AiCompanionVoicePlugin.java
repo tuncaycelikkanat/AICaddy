@@ -43,7 +43,7 @@ public class AiCompanionVoicePlugin implements VoicechatPlugin {
 	public void initialize(VoicechatApi api) {
 		VOICECHAT_API = api;
 		this.opusDecoder = api.createDecoder();
-		VoskSttManager.setSpeechListener(this::onSpeechRecognized);
+		SttManager.setSpeechListener(this::onSpeechRecognized);
 		ExampleMod.LOGGER.info("AI Companion Voice Plugin başlatıldı.");
 	}
 
@@ -53,7 +53,7 @@ public class AiCompanionVoicePlugin implements VoicechatPlugin {
 	}
 
 	private void onMicrophonePacket(MicrophonePacketEvent event) {
-		if (!VoskSttManager.isReady() || opusDecoder == null) return;
+		if (!SttManager.isReady() || opusDecoder == null) return;
 
 		try {
 			if (event.getSenderConnection() != null && event.getSenderConnection().getPlayer() != null) {
@@ -65,11 +65,8 @@ public class AiCompanionVoicePlugin implements VoicechatPlugin {
 
 			lastPacketMs = System.currentTimeMillis();
 
-			// Feed audio to Vosk
-			String result = VoskSttManager.transcribe(pcmData);
-			if (result != null && !result.isBlank()) {
-				currentPartial = result;
-			}
+			// Feed audio to active STT engine
+			SttManager.onAudioPacket(pcmData);
 
 			// Cancel previous flush timer and restart it
 			// This means: "speech is done SILENCE_GAP_MS after the last audio packet"
@@ -88,11 +85,7 @@ public class AiCompanionVoicePlugin implements VoicechatPlugin {
 	 * Flushes whatever Vosk has recognized as the final speech.
 	 */
 	private void flushCurrentSpeech() {
-		String flushed = VoskSttManager.flushPartial();
-		if (flushed != null && !flushed.isBlank()) {
-			ExampleMod.LOGGER.info("🎙️ Konuşma tamamlandı: \"{}\"", flushed);
-			onSpeechRecognized(flushed);
-		}
+		SttManager.flushSpeech();
 	}
 
 	private void onSpeechRecognized(String transcribedText) {

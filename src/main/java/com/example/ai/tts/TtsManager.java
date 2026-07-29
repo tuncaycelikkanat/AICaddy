@@ -42,6 +42,24 @@ public class TtsManager {
 			new com.example.ai.resilience.CircuitBreaker("StreamElements", 3, 60_000L);
 
 	/**
+	 * Splits a complete or partial reply into sentences and speaks them sequentially via speakSentenceAsync.
+	 * This ensures first-audio latency is minimized by synthesizing shorter sentence chunks.
+	 */
+	public static void speakStreamingSentencesAsync(ServerPlayer player, String message) {
+		if (!ttsEnabled || message == null || message.isBlank()) return;
+		java.util.List<String> sentences = com.example.ai.provider.PartialJsonExtractor.extractCompletedSentences(message);
+		if (sentences.isEmpty()) {
+			speakSentenceAsync(player, message, true);
+		} else {
+			boolean isFirst = true;
+			for (String sentence : sentences) {
+				speakSentenceAsync(player, sentence, isFirst);
+				isFirst = false;
+			}
+		}
+	}
+
+	/**
 	 * Speaks a single sentence immediately via the FIFO single-thread TTS executor.
 	 * Used by streaming LLM responses so the first sentence plays while the second is still generating.
 	 */

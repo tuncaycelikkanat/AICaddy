@@ -61,8 +61,8 @@ public class GroqAiProvider implements AiProvider {
 	@Override
 	public CompletableFuture<String> generateResponseAsync(String systemPrompt, String userMessage) {
 		if (GROQ_BREAKER.isOpen()) {
-			ExampleMod.LOGGER.warn("Groq API devre kesicisi açık - istek engellendi (cooldown bekleniyor).");
-			return CompletableFuture.completedFuture("Miyav... (Zihnim biraz yoruldu, 1 dakika dinleniyorum)");
+			ExampleMod.LOGGER.warn("Groq API devre kesicisi açık - istek engellendi (cooldown bekleniyor). Canned Fallback devrede.");
+			return CompletableFuture.completedFuture(com.example.ai.resilience.CannedFallbackProvider.getCannedFallback());
 		}
 
 		String key = getApiKey();
@@ -111,7 +111,7 @@ public class GroqAiProvider implements AiProvider {
 						GROQ_BREAKER.recordFailure();
 						String errBody = response.body().reduce("", (a, b) -> a + "\n" + b);
 						ExampleMod.LOGGER.error("Groq API hata kodu {}: {}", response.statusCode(), errBody);
-						return "Miyav... (Groq bağlantı hatası: " + response.statusCode() + ")";
+						return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 					}
 					GROQ_BREAKER.recordSuccess();
 					return processSseStream(response.body());
@@ -119,7 +119,7 @@ public class GroqAiProvider implements AiProvider {
 				.exceptionally(ex -> {
 					GROQ_BREAKER.recordFailure();
 					ExampleMod.LOGGER.error("Groq API isteği başarısız.", ex);
-					return "Miyav! (Groq sunucusuna ulaşılamadı)";
+					return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 				});
 	}
 

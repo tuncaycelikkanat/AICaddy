@@ -123,12 +123,21 @@ public class EmotionalEventDetector {
 
 		if (prev == null) return;
 
-		if (ratio < LOW_HEALTH_THRESHOLD && (prev / maxHp) >= LOW_HEALTH_THRESHOLD) {
+		if (currentHp <= 0 && prev > 0) {
+			CompanionDebugLogger.logEventDetected(player, "OYUNCU_ÖLDÜ", "Can 0'a düştü");
+			com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
+				player.getUUID(), player.getScoreboardName(), "Tehlikeli şekilde can vererek öldü");
+			com.example.ai.memory.PlayerMemoryStore.modifyAffinityAsync(
+				player.getUUID(), player.getScoreboardName(), -2, "Tehlikeye dikkat etmeyerek öldü");
+			CompanionMoodEngine.processTrigger(MoodTrigger.LOW_HEALTH, player);
+		} else if (ratio < LOW_HEALTH_THRESHOLD && (prev / maxHp) >= LOW_HEALTH_THRESHOLD) {
 			CompanionDebugLogger.logEventDetected(player, "DÜŞÜK_CAN",
 				String.format("HP: %.1f / %.1f (%.0f%%)", currentHp, maxHp, ratio * 100));
 			CompanionMoodEngine.processTrigger(MoodTrigger.LOW_HEALTH, player);
 			com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
 				player.getUUID(), player.getScoreboardName(), "Tehlikeli şekilde canı azaldı (" + (int)(ratio * 100) + "%)");
+			com.example.ai.memory.PlayerMemoryStore.modifyAffinityAsync(
+				player.getUUID(), player.getScoreboardName(), -1, "Canını tehlikeli şekilde azalttı");
 			triggerProactiveSpeech(player, "low_health",
 				"Oyuncunun canı tehlikeli derecede düşük! Companion panikleyerek kısa bir şey söylesin.");
 		}
@@ -176,6 +185,8 @@ public class EmotionalEventDetector {
 					String itemName = stack.getHoverName().getString();
 					CompanionDebugLogger.logEventDetected(player, "EFSANE_EŞYA", itemName);
 					CompanionMoodEngine.processTrigger(trigger, player);
+					com.example.ai.memory.PlayerMemoryStore.addMilestoneAsync(
+						player.getUUID(), player.getScoreboardName(), "Efsanevi Eşya Kazandı: " + itemName);
 					com.example.ai.memory.PlayerMemoryStore.appendEventAsync(
 						player.getUUID(), player.getScoreboardName(), "Efsanevi eşya buldu: '" + itemName + "'");
 					triggerProactiveSpeech(player, "exciting_item_" + itemName,
@@ -231,10 +242,18 @@ public class EmotionalEventDetector {
 			lastBiome.put(pid + "_dim", dim);
 			if (dim.contains("nether")) {
 				CompanionMoodEngine.processTrigger(MoodTrigger.NETHER_ENTERED);
+				com.example.ai.memory.PlayerMemoryStore.addMilestoneAsync(
+					player.getUUID(), player.getScoreboardName(), "Nether Boyutuna Adım Attı");
+				com.example.ai.memory.PlayerMemoryStore.modifyAffinityAsync(
+					player.getUUID(), player.getScoreboardName(), 3, "Nether macerasına adım attı");
 				triggerProactiveSpeech(player, "nether_entered",
 					"Nether'a girdik! Companion hem heyecanlı hem biraz gergin, kısa bir şey söylesin.");
 			} else if (dim.contains("end")) {
 				CompanionMoodEngine.processTrigger(MoodTrigger.END_ENTERED);
+				com.example.ai.memory.PlayerMemoryStore.addMilestoneAsync(
+					player.getUUID(), player.getScoreboardName(), "End Boyutuna Ulaştı");
+				com.example.ai.memory.PlayerMemoryStore.modifyAffinityAsync(
+					player.getUUID(), player.getScoreboardName(), 5, "End boyutunda Ejderha savaşına girdi");
 				triggerProactiveSpeech(player, "end_entered",
 					"End'e girdik! Ejderha var burada. Companion hem korkmuş hem coşkulu, kısa bir şey söylesin.");
 			}

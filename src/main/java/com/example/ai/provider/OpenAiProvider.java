@@ -55,8 +55,16 @@ public class OpenAiProvider implements AiProvider {
 		return null;
 	}
 
+	private static final com.example.ai.resilience.CircuitBreaker OPENAI_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("OpenAI", 3, 60_000L);
+
 	@Override
 	public CompletableFuture<String> generateResponseAsync(String systemPrompt, String userMessage) {
+		if (OPENAI_BREAKER.isOpen()) {
+			ExampleMod.LOGGER.warn("OpenAI devre kesicisi açık - istek engellendi (cooldown bekleniyor). Canned Fallback devrede.");
+			return CompletableFuture.completedFuture(com.example.ai.resilience.CannedFallbackProvider.getCannedFallback());
+		}
+
 		String key = getApiKey();
 		if (key == null || key.isEmpty()) {
 			ExampleMod.LOGGER.warn("OpenAI API key is missing. Add it to config/openai_api_key.txt.");
@@ -90,14 +98,17 @@ public class OpenAiProvider implements AiProvider {
 		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
+						OPENAI_BREAKER.recordFailure();
 						ExampleMod.LOGGER.error("OpenAI API error code " + response.statusCode() + ": " + response.body());
-						return "Miyav... (OpenAI bağlantı hatası: " + response.statusCode() + ")";
+						return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 					}
+					OPENAI_BREAKER.recordSuccess();
 					return extractTextFromJson(response.body());
 				})
 				.exceptionally(ex -> {
+					OPENAI_BREAKER.recordFailure();
 					ExampleMod.LOGGER.error("OpenAI API request failed.", ex);
-					return "Miyav! (OpenAI sunucusuna ulaşılamadı)";
+					return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 				});
 	}
 

@@ -56,8 +56,16 @@ public class OllamaAiProvider implements AiProvider {
 		return configuredModel;
 	}
 
+	private static final com.example.ai.resilience.CircuitBreaker OLLAMA_BREAKER =
+			new com.example.ai.resilience.CircuitBreaker("Ollama", 3, 60_000L);
+
 	@Override
 	public CompletableFuture<String> generateResponseAsync(String systemPrompt, String userMessage) {
+		if (OLLAMA_BREAKER.isOpen()) {
+			ExampleMod.LOGGER.warn("Ollama devre kesicisi açık - istek engellendi (cooldown bekleniyor). Canned Fallback devrede.");
+			return CompletableFuture.completedFuture(com.example.ai.resilience.CannedFallbackProvider.getCannedFallback());
+		}
+
 		String model = getModelName();
 		String fullPrompt = systemPrompt + "\n\n[Oyuncunun Konuşması]: \"" + userMessage + "\"";
 
@@ -75,14 +83,17 @@ public class OllamaAiProvider implements AiProvider {
 		return HTTP_CLIENT.sendAsync(request, HttpResponse.BodyHandlers.ofString())
 				.thenApply(response -> {
 					if (response.statusCode() != 200) {
+						OLLAMA_BREAKER.recordFailure();
 						ExampleMod.LOGGER.error("Ollama API error code " + response.statusCode() + ": " + response.body());
-						return "Miyav... (Ollama yerel sunucu hatası: " + response.statusCode() + ")";
+						return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 					}
+					OLLAMA_BREAKER.recordSuccess();
 					return extractTextFromJson(response.body());
 				})
 				.exceptionally(ex -> {
+					OLLAMA_BREAKER.recordFailure();
 					ExampleMod.LOGGER.error("Ollama API request failed.", ex);
-					return "Miyav! (Ollama sunucusu localhost:11434 üzerinde açık değil)";
+					return com.example.ai.resilience.CannedFallbackProvider.getCannedFallback();
 				});
 	}
 

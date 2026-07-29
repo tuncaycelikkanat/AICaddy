@@ -88,8 +88,41 @@ public enum CompanionMoodState {
 		if (aro > 0.50 && val >= 0.2) return PROUD;
 		if (val < -0.4 && aro <= 0.7) return SAD;
 		if (val < -0.2 && aro > 0.5) return TENSE;
-		if (val < -0.2 && aro <= 0.5) return FRUSTRATED;
 		if (aro <= 0.30) return BORED;
 		return CURIOUS;
+	}
+
+	/**
+	 * Returns the dynamic, colored chat badge for Kedi based on current mood (P3.1).
+	 */
+	public String getChatBadge() {
+		switch (this) {
+			case EXCITED:    return "§d✨ [Kedi - COŞKULU]§f";
+			case SCARED:     return "§c🙀 [Kedi - KORKMUŞ]§f";
+			case SAD:        return "§9😿 [Kedi - ÜZGÜN]§f";
+			case PROUD:      return "§6👑 [Kedi - GURURLU]§f";
+			case BORED:      return "§7💤 [Kedi - SIKILMIŞ]§f";
+			case FRUSTRATED: return "§e😤 [Kedi - BUNALMIŞ]§f";
+			case TENSE:      return "§4⚡ [Kedi - GERGİN]§f";
+			case CURIOUS:
+			default:         return "§b🧐 [Kedi - MERAKLI]§f";
+		}
+	}
+
+	/**
+	 * Returns the action-bar HUD alert when Kedi's mood transitions (P3.1).
+	 */
+	public String getActionBarNotification() {
+		switch (this) {
+			case EXCITED:    return "§d✨ Kedi heyecanlandı ve coştu! (COŞKULU)";
+			case SCARED:     return "§c🙀 Kedi panik olmaya başladı... (KORKMUŞ)";
+			case SAD:        return "§9😿 Kedi'nin hüzünlendiğini görüyorsun... (ÜZGÜN)";
+			case PROUD:      return "§6👑 Kedi seninle gurur duyuyor! (GURURLU)";
+			case BORED:      return "§7💤 Kedi sıkıldı, esnemeye başladı... (SIKILMIŞ)";
+			case FRUSTRATED: return "§e😤 Kedi duruma biraz bunaldı! (BUNALMIŞ)";
+			case TENSE:      return "§4⚡ Kedi gerildi, dikkat kesildi... (GERGİN)";
+			case CURIOUS:
+			default:         return "§b🧐 Kedi'nin meraklı gözleri parladı! (MERAKLI)";
+		}
 	}
 }

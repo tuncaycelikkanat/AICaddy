@@ -139,3 +139,31 @@ task runGeminiFlash50Test(type: JavaExec) {
 	mainClass = 'com.example.ai.test.Gemini50ScenarioTester'
 	systemProperty 'gemini.model', 'gemini-flash-latest'
 }
+
+task runCannedFallbackTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the P1.3 Canned Fallback and CircuitBreaker verification test'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.CannedFallbackTest'
+}
+
+task runPlayerMemoryTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the P2.1 Enriched Player Memory, Milestones, and Affinity Score test'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.PlayerMemoryTest'
+}
+
+task runTelemetryAndHudTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the P3.1 Dynamic Mood Badges & HUD and P2.3 Telemetry JSONL verification test'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.TelemetryAndHudTest'
+}
+
+task runSttTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the Hybrid STT provider selection and WAV format verification test'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.example.ai.test.SttManagerTest'
+}

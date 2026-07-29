@@ -167,14 +167,10 @@ public class AiBrainManager {
 		// ── Current mood ──
 		sb.append(moodContext).append("\n");
 
-		// ── Persistent memory (SQLite) ──
-		List<String> recentEvents = com.example.ai.memory.PlayerMemoryStore.getRecentEvents(player.getUUID());
-		if (!recentEvents.isEmpty()) {
-			sb.append("[BU OYUNCUYLA DAHA ÖNCE YAŞADIKLARIMIZ]:\n");
-			for (String evt : recentEvents) {
-				sb.append("- ").append(evt).append("\n");
-			}
-			sb.append("\n");
+		// ── Persistent memory & affinity (SQLite - P2.1) ──
+		String memorySummary = com.example.ai.memory.PlayerMemoryStore.getSummarizedMemoryPrompt(player.getUUID());
+		if (!memorySummary.isEmpty()) {
+			sb.append(memorySummary).append("\n");
 		}
 
 		// ── Conversation history ──
@@ -255,24 +251,45 @@ public class AiBrainManager {
 		if (now - lastRequestTimeMs < 1000) return; // debounce
 		lastRequestTimeMs = now;
 
+		long startTimeMs = System.currentTimeMillis();
 		generateCompanionResponseAsync(player, playerSpeech).thenAccept(aiResponse -> {
+			long latencyMs = System.currentTimeMillis() - startTimeMs;
 			addTurnToHistory(player, playerSpeech, aiResponse);
 			broadcastResponse(player, aiResponse);
+
+			// P2.3 Telemetry log
+			com.example.ai.mood.CompanionMoodState moodState = com.example.ai.mood.CompanionMoodState.fromVector(CompanionMoodEngine.getCurrentVector());
+			int affinity = com.example.ai.memory.PlayerMemoryStore.getAffinityScore(player.getUUID());
+			com.example.ai.debug.CompanionTelemetryLogger.logTurnAsync(
+					player.getStringUUID(),
+					player.getScoreboardName(),
+					"CHAT",
+					getActiveProvider().getId(),
+					latencyMs,
+					getActiveProvider().getId().equals("groq") ? 650 : -1, // TTFA streaming estimate
+					moodState,
+					affinity,
+					false,
+					playerSpeech,
+					aiResponse
+			);
 		});
 	}
 
 	private static void broadcastResponse(ServerPlayer player, String message) {
-		ExampleMod.LOGGER.info("🐱 [Kedi -> {}]: \"{}\"", player.getScoreboardName(), message);
+		com.example.ai.mood.CompanionMoodState currentMood = com.example.ai.mood.CompanionMoodState.fromVector(CompanionMoodEngine.getCurrentVector());
+		String badge = currentMood.getChatBadge();
+		ExampleMod.LOGGER.info("🐱 [Kedi -> {} | Mood: {}]: \"{}\"", player.getScoreboardName(), currentMood.getLabel(), message);
 		if (ExampleMod.SERVER_INSTANCE != null) {
 			ExampleMod.SERVER_INSTANCE.execute(() -> {
 				ExampleMod.SERVER_INSTANCE.getPlayerList().broadcastSystemMessage(
-						Component.literal("§e🐱 [Kedi]: §f" + message),
+						Component.literal(badge + ": §f" + message),
 						false
 				);
 				// GroqAiProvider streams live TTS sentence-by-sentence during generation;
-				// only invoke full TTS after broadcast for non-streaming providers.
+				// invoke streaming sentence TTS after broadcast for non-streaming providers.
 				if (!getActiveProvider().getId().equals("groq")) {
-					com.example.ai.tts.TtsManager.speakTurkishAsync(player, message);
+					com.example.ai.tts.TtsManager.speakStreamingSentencesAsync(player, message);
 				}
 			});
 		}

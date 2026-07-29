@@ -45,15 +45,30 @@ public class CompanionMoodEngine {
 		processTrigger(trigger, null);
 	}
 
-	public static void processTrigger(MoodTrigger trigger, ServerPlayer debugPlayer) {
+	public static void processTrigger(MoodTrigger trigger, ServerPlayer player) {
 		CompanionMoodState oldMood = getCurrentMood();
 		CompanionMoodVector targetVec = resolveVector(trigger);
 		CompanionMoodVector newVec = currentVector.updateAndGet(curr -> curr.smoothToward(targetVec, 0.4));
 		CompanionMoodState newMood = CompanionMoodState.fromVector(newVec);
 
 		recordMemoryEvent(trigger.getMemoryDescription());
-		if (debugPlayer != null && oldMood != newMood) {
-			CompanionDebugLogger.logMoodChange(debugPlayer, trigger, newMood);
+		if (oldMood != newMood) {
+			int affinity = (player != null) ? com.example.ai.memory.PlayerMemoryStore.getAffinityScore(player.getUUID()) : 0;
+			com.example.ai.debug.CompanionTelemetryLogger.logMoodTransitionAsync(
+				(player != null) ? player.getStringUUID() : "SYSTEM",
+				(player != null) ? player.getScoreboardName() : "SYSTEM",
+				trigger.name(),
+				oldMood,
+				newMood,
+				affinity
+			);
+			if (player != null) {
+				CompanionDebugLogger.logMoodChange(player, trigger, newMood);
+				player.displayClientMessage(
+					net.minecraft.network.chat.Component.literal(newMood.getActionBarNotification()),
+					true // Action Bar (HUD) banner display
+				);
+			}
 		}
 	}
 
