@@ -91,7 +91,7 @@ public class Gemini50ScenarioTester {
 		if (apiKey != null && !apiKey.isEmpty()) {
 			try {
 				String prompt = CompanionScenarioTester.buildSystemPrompt(sc);
-				String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=" + apiKey;
+				String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=" + apiKey;
 				JsonObject textPart = new JsonObject();
 				textPart.addProperty("text", prompt + "\n\n[DURUM]: " + sc.situationPrompt() + "\nLütfen JSON çıktısı ver.");
 				JsonObject contentObj = new JsonObject();
@@ -331,9 +331,9 @@ public class Gemini50ScenarioTester {
 
 	private static void generateGeminiMarkdownReport(List<CompanionScenarioTester.TestResult> results, long totalDurationMs) {
 		StringBuilder md = new StringBuilder();
-		md.append("# 🌟 AI CADDY — GEMİNİ (1.5-PRO) 50 SENARYO BENCHMARK VE RUH HALİ RAPORU\n\n");
+		md.append("# 🌟 AI CADDY — GEMİNİ 3.1 FLASH LITE (500 RPD / 15 RPM) 50 SENARYO BENCHMARK VE RUH HALİ RAPORU\n\n");
 		md.append("**Test Tarihi:** ").append(java.time.ZonedDateTime.now()).append("\n");
-		md.append("**Kullanılan Model / Persona:** Google Gemini 1.5 Pro (Empatik, Öyküsel Can Yoldaşı)\n");
+		md.append("**Kullanılan Model / Persona:** Google Gemini 3.1 Flash Lite (Yüksek Hız, 500 RPD Optimize Can Yoldaşı)\n");
 		md.append("**Toplam Senaryo:** 50 (8 Ruh Hali Kategorisi)\n");
 		md.append("**Toplam Çalışma Süresi:** ").append(String.format("%.1f saniye", totalDurationMs / 1000.0)).append("\n\n");
 
