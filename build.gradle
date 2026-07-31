@@ -23,6 +23,15 @@ repositories {
 loom {
 	splitEnvironmentSourceSets()
 
+	runs {
+		client {
+			vmArgs "-Djava.net.preferIPv4Stack=true", "-Djava.net.preferIPv6Addresses=false"
+		}
+		server {
+			vmArgs "-Djava.net.preferIPv4Stack=true", "-Djava.net.preferIPv6Addresses=false"
+		}
+	}
+
 	mods {
 		"modid" {
 			sourceSet sourceSets.main
@@ -114,21 +123,35 @@ task runScenarioTest(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the 50 Minecraft scenario AI Companion test and generates report'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.CompanionScenarioTester'
+	mainClass = 'com.aicaddy.ai.test.CompanionScenarioTester'
+}
+
+task runFsmTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the formal FSM verification suite across Mood, Behavior, Phase, and Conversation FSMs'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.aicaddy.ai.test.FsmScenarioTester'
+}
+
+task runEnterpriseTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the Enterprise AI & Behavioral Intelligence suite (Resilience, RAG Memory, Utility AI, Debounce)'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.aicaddy.ai.test.EnterpriseAiSuiteTester'
 }
 
 task runMultiModelTest(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs side-by-side comparative AI Companion test across Groq, Gemini, DeepSeek, and Kimi'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.MultiModelScenarioTester'
+	mainClass = 'com.aicaddy.ai.test.MultiModelScenarioTester'
 }
 
 task runGemini50Test(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the 50 Minecraft scenario AI Companion test using Gemini 3.1 Flash Lite and generates report'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.Gemini50ScenarioTester'
+	mainClass = 'com.aicaddy.ai.test.Gemini50ScenarioTester'
 	systemProperty 'gemini.model', 'gemini-3.1-flash-lite'
 }
 
@@ -136,7 +159,7 @@ task runGeminiFlash50Test(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the 50 Minecraft scenario AI Companion test using Gemini Flash (Standard) and generates report'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.Gemini50ScenarioTester'
+	mainClass = 'com.aicaddy.ai.test.Gemini50ScenarioTester'
 	systemProperty 'gemini.model', 'gemini-flash-latest'
 }
 
@@ -144,26 +167,54 @@ task runCannedFallbackTest(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the P1.3 Canned Fallback and CircuitBreaker verification test'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.CannedFallbackTest'
+	mainClass = 'com.aicaddy.ai.test.CannedFallbackTest'
+}
+
+task runPromptModeTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs comprehensive scenario benchmark across STANDART, SERBEST, TAKTIKSEL, and EGLENCELI prompt modes (200 evaluations)'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.aicaddy.ai.test.PromptModeComparisonTester'
+}
+
+task runGroqGemini100Test(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs side-by-side Groq vs Gemini comparative benchmark across 100 realistic Minecraft scenarios in STANDART mode'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.aicaddy.ai.test.GroqGemini100SideBySideTester'
+}
+
+task runInnovationsTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs automated verification suite for the 4 flagship integrations (Voyager Skills, Altera Diary, Baritone Voxel Map, MCA Job Delegation)'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.aicaddy.ai.test.EnterpriseInnovationsSuiteTester'
 }
 
 task runPlayerMemoryTest(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the P2.1 Enriched Player Memory, Milestones, and Affinity Score test'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.PlayerMemoryTest'
+	mainClass = 'com.aicaddy.ai.test.PlayerMemoryTest'
 }
 
 task runTelemetryAndHudTest(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the P3.1 Dynamic Mood Badges & HUD and P2.3 Telemetry JSONL verification test'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.TelemetryAndHudTest'
+	mainClass = 'com.aicaddy.ai.test.TelemetryAndHudTest'
 }
 
 task runSttTest(type: JavaExec) {
 	group = 'verification'
 	description = 'Runs the Hybrid STT provider selection and WAV format verification test'
 	classpath = sourceSets.main.runtimeClasspath
-	mainClass = 'com.example.ai.test.SttManagerTest'
+	mainClass = 'com.aicaddy.ai.test.SttManagerTest'
+}
+
+task runOmniscientTest(type: JavaExec) {
+	group = 'verification'
+	description = 'Runs the P10 Omniscient and Entity Companion verification test'
+	classpath = sourceSets.main.runtimeClasspath
+	mainClass = 'com.aicaddy.ai.test.OmniscientCompanionTest'
 }

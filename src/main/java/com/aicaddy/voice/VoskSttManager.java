@@ -1,0 +1,182 @@
+package com.aicaddy.voice;
+
+import com.aicaddy.ExampleMod;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import org.vosk.LibVosk;
+import org.vosk.LogLevel;
+import org.vosk.Model;
+import org.vosk.Recognizer;
+
+import java.io.*;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.CompletableFuture;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+public class VoskSttManager {
+
+	private static final String MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-tr-0.3.zip";
+	private static final String MODELS_DIR = "models";
+	private static final String MODEL_DIR_NAME = "vosk-model-tr";
+
+	private static Model model = null;
+	private static Recognizer recognizer = null;
+	private static boolean isReady = false;
+
+	private static volatile String lastPartialText = "";
+	private static volatile long lastSpeechTimeMs = 0;
+
+	public interface SpeechListener {
+		void onSpeechRecognized(String text);
+	}
+
+	private static SpeechListener speechListener = null;
+
+	public static void setSpeechListener(SpeechListener listener) {
+		speechListener = listener;
+	}
+
+	public static void initialize() {
+		// Reduce Vosk native C++ library log spam.
+		LibVosk.setLogLevel(LogLevel.WARNINGS);
+
+		// Load or download the acoustic model asynchronously.
+		CompletableFuture.runAsync(() -> {
+			try {
+				File modelDir = ensureModelDownloaded();
+				ExampleMod.LOGGER.info("Loading Vosk Turkish model from: " + modelDir.getAbsolutePath());
+				model = new Model(modelDir.getAbsolutePath());
+				recognizer = new Recognizer(model, 48000.0f);
+				isReady = true;
+				ExampleMod.LOGGER.info("✔ Vosk Türkçe STT modeli hazır.");
+
+			} catch (Exception e) {
+				ExampleMod.LOGGER.error("Failed to initialize Vosk STT model.", e);
+			}
+		});
+	}
+
+	public static boolean isReady() {
+		return isReady && recognizer != null;
+	}
+
+	/**
+	 * Called by AiCompanionVoicePlugin after silence gap.
+	 * Returns the current partial text and resets the buffer.
+	 */
+	public static synchronized String flushPartial() {
+		if (lastPartialText.isBlank()) return "";
+		String result = lastPartialText;
+		lastPartialText = "";
+		if (recognizer != null) recognizer.reset();
+		return result;
+	}
+
+	/**
+	 * Transcribes raw 16-bit PCM audio samples into text with smart pause detection.
+	 */
+	public static synchronized String transcribe(short[] pcmData) {
+		if (!isReady()) {
+			return "";
+		}
+		try {
+			boolean isFinal = recognizer.acceptWaveForm(pcmData, pcmData.length);
+			if (isFinal) {
+				String jsonResult = recognizer.getResult();
+				JsonObject jsonObject = JsonParser.parseString(jsonResult).getAsJsonObject();
+				if (jsonObject.has("text")) {
+					String text = jsonObject.get("text").getAsString().trim();
+					lastPartialText = "";
+					if (speechListener != null && !text.isEmpty()) {
+						speechListener.onSpeechRecognized(text);
+					}
+					return text;
+				}
+			} else {
+				String jsonResult = recognizer.getPartialResult();
+				JsonObject jsonObject = JsonParser.parseString(jsonResult).getAsJsonObject();
+				if (jsonObject.has("partial")) {
+					String partial = jsonObject.get("partial").getAsString().trim();
+					long now = System.currentTimeMillis();
+
+					if (partial.length() > 3 && !partial.equals(lastPartialText)) {
+						lastPartialText = partial;
+						lastSpeechTimeMs = now;
+					} else if (partial.length() > 3 && (now - lastSpeechTimeMs > 350)) {
+						String completedSpeech = partial;
+						recognizer.reset();
+						lastPartialText = "";
+						lastSpeechTimeMs = now;
+						if (speechListener != null) {
+							speechListener.onSpeechRecognized(completedSpeech);
+						}
+						return completedSpeech;
+					}
+				}
+			}
+		} catch (Exception e) {
+			ExampleMod.LOGGER.error("Error transcribing PCM audio:", e);
+		}
+		return "";
+	}
+
+	/**
+	 * Downloads and extracts the Vosk acoustic model if not present.
+	 */
+	private static File ensureModelDownloaded() throws IOException {
+		File modelsDirFile = new File(MODELS_DIR);
+		if (!modelsDirFile.exists()) {
+			modelsDirFile.mkdirs();
+		}
+		File targetDir = new File(modelsDirFile, MODEL_DIR_NAME);
+		if (targetDir.exists() && targetDir.isDirectory() && targetDir.list() != null && targetDir.list().length > 0) {
+			return targetDir;
+		}
+
+		ExampleMod.LOGGER.info("Vosk Turkish model not found. Downloading 45 MB model archive...");
+		File zipFile = new File(modelsDirFile, "vosk-model-tr.zip");
+
+		try (InputStream in = new URL(MODEL_URL).openStream();
+			 FileOutputStream out = new FileOutputStream(zipFile)) {
+			byte[] buffer = new byte[8192];
+			int bytesRead;
+			while ((bytesRead = in.read(buffer)) != -1) {
+				out.write(buffer, 0, bytesRead);
+			}
+		}
+
+		ExampleMod.LOGGER.info("Extracting Vosk model archive...");
+		try (ZipInputStream zis = new ZipInputStream(new FileInputStream(zipFile))) {
+			ZipEntry entry;
+			while ((entry = zis.getNextEntry()) != null) {
+				File newFile = new File(modelsDirFile, entry.getName());
+				if (entry.isDirectory()) {
+					newFile.mkdirs();
+				} else {
+					newFile.getParentFile().mkdirs();
+					try (FileOutputStream fos = new FileOutputStream(newFile)) {
+						byte[] buf = new byte[8192];
+						int len;
+						while ((len = zis.read(buf)) > 0) {
+							fos.write(buf, 0, len);
+						}
+					}
+				}
+				zis.closeEntry();
+			}
+		}
+
+		File extractedDir = new File(modelsDirFile, "vosk-model-small-tr-0.3");
+		if (extractedDir.exists()) {
+			extractedDir.renameTo(targetDir);
+		}
+		if (zipFile.exists()) {
+			zipFile.delete();
+		}
+
+		return targetDir;
+	}
+}

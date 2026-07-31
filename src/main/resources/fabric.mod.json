@@ -1,32 +1,32 @@
 {
 	"schemaVersion": 1,
-	"id": "modid",
+	"id": "aicaddy",
 	"version": "${version}",
-	"name": "AI Companion Pet Mod",
-	"description": "AI-powered Minecraft Voice Companion Pet Mod (Step 1: Minecraft Cat Follower)",
+	"name": "AI Caddy",
+	"description": "Autonomous AI Companion with Valence-Arousal Mood Engine and Groq/Gemini LLM Integration",
 	"authors": [
-		"Me!"
+		"AI Caddy Team"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
 		"sources": "https://github.com/FabricMC/fabric-example-mod"
 	},
 	"license": "CC0-1.0",
-	"icon": "assets/modid/icon.png",
+	"icon": "assets/aicaddy/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"com.example.ExampleMod"
+			"com.aicaddy.ExampleMod"
 		],
 		"client": [
-			"com.example.client.ExampleModClient"
+			"com.aicaddy.client.ExampleModClient"
 		],
 		"voicechat": [
-			"com.example.voice.AiCompanionVoicePlugin"
+			"com.aicaddy.voice.AiCompanionVoicePlugin"
 		]
 	},
 	"mixins": [
-		"modid.mixins.json"
+		"aicaddy.mixins.json"
 	],
 	"depends": {
 		"fabricloader": ">=0.19.3",
