@@ -13,7 +13,10 @@ public final class CompanionJobManager {
 		IDLE("SERBEST_TAKIL", "Serbest Mod — Oyuncuyu takip et veya dinlen."),
 		GUARD_AREA("ALAN_NOBETCISI", "Alan Nöbetçisi — Bulunduğun 10 blok çapında nöbet tut, yaklaşan mobları avla."),
 		MINING_ASSISTANT("MADEN_YAVERI", "Maden Yaveri — Oyuncu kazarken arkasında dur, yere düşen ganimetleri topla ve meşale at."),
-		SCOUT_AHEAD("ONCU_KESIFCI", "Öncü Keşifçi — 15 blok önden ilerle, mağara köşelerini tara ve tehlikeleri önceden bildir.");
+		SCOUT_AHEAD("ONCU_KESIFCI", "Öncü Keşifçi — 15 blok önden ilerle, mağara köşelerini tara ve tehlikeleri önceden bildir."),
+		ARCHER_DEFENDER("OKCU_SAVUNMACI", "Okçu Savunmacı — Yüksek bir noktada konuşlan, oyuncuya yaklaşan moblara yayla uzaktan koruma ateşi aç."),
+		AUTO_TORCHER("OTOMATIK_TORCCU", "Otomatik Torççu — Çevredeki karanlık (ışık seviyesi <= 7) blokları tespit et ve meşale koyarak canavar doğmasını engelle."),
+		BUILDER_ASSISTANT("INSAATCI", "İnşaatçı — Acil durum barınağı şablonuna göre oyuncunun etrafını bloklarla koruma altına al ve sığınak inşa et.");
 
 		private final String id;
 		private final String description;

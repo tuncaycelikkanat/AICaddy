@@ -25,9 +25,14 @@ public class EnterpriseInnovationsSuiteTester {
 		// 1. Test NVIDIA Voyager Skill Library
 		System.out.println("\n[1/4] NVIDIA Voyager 'Skill Library' Entegrasyon Kontrolü...");
 		var creeperSkill = CompanionSkillLibrary.getSkill("EMERGENCY_CREEPER_DEFENSE");
-		if (creeperSkill.isPresent() && creeperSkill.get().actionSequence().size() == 4) {
-			System.out.println(" ✔ Beceriler başarıyla yüklendi: " + creeperSkill.get().name());
-			System.out.println(" ✔ Örnek Sekans: " + creeperSkill.get().actionSequence());
+		var dragonSkill = CompanionSkillLibrary.getSkill("ENDER_DRAGON_COMBAT");
+		var wardenSkill = CompanionSkillLibrary.getSkill("WARDEN_SILENT_ESCAPE");
+		var netherSkill = CompanionSkillLibrary.getSkill("NETHER_FORTRESS_INVASION");
+		if (creeperSkill.isPresent() && dragonSkill.isPresent() && wardenSkill.isPresent() && netherSkill.isPresent()
+				&& CompanionSkillLibrary.getAllSkills().size() >= 7) {
+			System.out.println(" ✔ Beceriler başarıyla yüklendi (Toplam " + CompanionSkillLibrary.getAllSkills().size() + " beceri makrosu): " + dragonSkill.get().name());
+			System.out.println(" ✔ Ejderha Sekansı: " + dragonSkill.get().actionSequence());
+			System.out.println(" ✔ Warden Sekansı  : " + wardenSkill.get().actionSequence());
 			passed++;
 		} else {
 			System.err.println(" ❌ Beceriler yüklenemedi!");
@@ -56,11 +61,18 @@ public class EnterpriseInnovationsSuiteTester {
 
 		// 4. Test MCA Autonomous Job Manager
 		System.out.println("\n[4/4] Minecraft Comes Alive (MCA) 'Job Delegation' Entegrasyon Kontrolü...");
-		CompanionJobManager.setActiveJob(CompanionJob.GUARD_AREA);
+		CompanionJobManager.setActiveJob(CompanionJob.ARCHER_DEFENDER);
 		CompanionJob job = CompanionJobManager.getActiveJob();
-		System.out.println(" ✔ Atanan Otonom Görev: " + job.getId() + " - " + job.getDescription());
+		CompanionJobManager.setActiveJob(CompanionJob.AUTO_TORCHER);
+		CompanionJob job2 = CompanionJobManager.getActiveJob();
+		CompanionJobManager.setActiveJob(CompanionJob.BUILDER_ASSISTANT);
+		CompanionJob job3 = CompanionJobManager.getActiveJob();
+		System.out.println(" ✔ Atanan Otonom Görev (1): " + CompanionJob.ARCHER_DEFENDER.getId() + " - " + CompanionJob.ARCHER_DEFENDER.getDescription());
+		System.out.println(" ✔ Atanan Otonom Görev (2): " + CompanionJob.AUTO_TORCHER.getId() + " - " + CompanionJob.AUTO_TORCHER.getDescription());
+		System.out.println(" ✔ Atanan Otonom Görev (3): " + job3.getId() + " - " + job3.getDescription());
 		System.out.println(" ✔ Prompt Enjeksiyon Çıktısı: " + CompanionJobManager.toPromptInjection());
-		if (job == CompanionJob.GUARD_AREA) {
+		if (job == CompanionJob.ARCHER_DEFENDER && job2 == CompanionJob.AUTO_TORCHER && job3 == CompanionJob.BUILDER_ASSISTANT
+				&& CompanionJob.values().length >= 7) {
 			passed++;
 		}
 

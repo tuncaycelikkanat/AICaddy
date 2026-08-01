@@ -58,6 +58,30 @@ public final class CompanionSkillLibrary {
 				List.of("ADVANCE_10M", "DETECT_DARK_CORNERS", "PLACE_TORCH", "REPORT_MOB_SIGNALS"),
 				"EARLY"
 		));
+
+		SKILLS.put("NETHER_FORTRESS_INVASION", new SkillMacro(
+				"NETHER_FORTRESS_INVASION",
+				"Nether Kalesi İstilası",
+				"Koridor ağzını kalkanla kapat, Blaze hedeflerini yayla uzaktan avla, solmuşluk (wither) iksirine karşı süt iç.",
+				List.of("TAKE_CORRIDOR_COVER", "DEFLECT_FIREBALL", "RANGED_BLAZE_ATTACK", "DRINK_MILK_IF_WITHERED", "COLLECT_RODS"),
+				"MID"
+		));
+
+		SKILLS.put("ENDER_DRAGON_COMBAT", new SkillMacro(
+				"ENDER_DRAGON_COMBAT",
+				"Ender Ejderhası Savaşı",
+				"End kristallerini okla patlat, ejderha alçaldığında tünek anında yatak patlatma veya yakın dövüş taarruzu yap, nefes alanından kaç.",
+				List.of("DESTROY_END_CRYSTALS", "DODGE_DRAGON_BREATH", "WAIT_FOR_PERCH", "BED_BOMB_OR_MELEE"),
+				"ENDGAME"
+		));
+
+		SKILLS.put("WARDEN_SILENT_ESCAPE", new SkillMacro(
+				"WARDEN_SILENT_ESCAPE",
+				"Warden Sessiz Kaçış",
+				"Çömelerek adım at, Skulk sensörlerini tetiklememek için yün blok üstüne bas, ses çıkarmadan alanı 15 blok terk et.",
+				List.of("CROUCH_SNEAK_MODE", "AVOID_SCULK_SENSORS", "DEPLOY_WOOL_CARPET", "EVACUATE_15M_SILENTLY"),
+				"LATE"
+		));
 	}
 
 	public static Optional<SkillMacro> getSkill(String skillId) {
