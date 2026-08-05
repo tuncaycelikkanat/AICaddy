@@ -9,6 +9,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.monster.Monster;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
@@ -84,6 +85,18 @@ public class AiCompanionEntity {
 		String colorCode = getMoodColorCode(mood);
 		cat.setCustomName(Component.literal(colorCode + "🤝 [AI Arkadaş - " + mood.getLabel().toUpperCase() + "]"));
 		cat.setCustomNameVisible(true);
+		
+		DyeColor collarColor = switch (mood) {
+			case EXCITED -> DyeColor.PINK;
+			case SCARED -> DyeColor.WHITE;
+			case SAD -> DyeColor.BLUE;
+			case PROUD -> DyeColor.LIME;
+			case FRUSTRATED -> DyeColor.RED;
+			case CURIOUS -> DyeColor.YELLOW;
+			case TENSE -> DyeColor.ORANGE;
+			default -> DyeColor.GRAY;
+		};
+		((com.aicaddy.mixin.CatAccessor) cat).invokeSetCollarColor(collarColor);
 	}
 
 	private static String getMoodColorCode(CompanionMoodState mood) {

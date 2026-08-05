@@ -18,26 +18,7 @@ public final class ModCommands {
 
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
-            // /arkadas <mesaj> — Talk to companion (Primary command)
-            dispatcher.register(Commands.literal("arkadas")
-                    .then(Commands.argument("mesaj", StringArgumentType.greedyString())
-                            .executes(context -> {
-                                String mesaj = StringArgumentType.getString(context, "mesaj");
-                                ServerPlayer player = context.getSource().getPlayerOrException();
-                                ExampleMod.SERVER_INSTANCE.getPlayerList().broadcastSystemMessage(
-                                        Component.literal("§a💬 [" + player.getScoreboardName() + "]: §f" + mesaj),
-                                        false
-                                );
-                                player.displayClientMessage(
-                                        Component.literal("§7⏳ AI Arkadaş düşünüyor..."),
-                                        true
-                                );
-                                AiBrainManager.processAndRespond(player, mesaj);
-                                return 1;
-                            }))
-            );
-
-            // /yoldas <mesaj> — Alias
+            // /yoldas <mesaj> — Talk to companion (Primary command)
             dispatcher.register(Commands.literal("yoldas")
                     .then(Commands.argument("mesaj", StringArgumentType.greedyString())
                             .executes(context -> {
@@ -75,7 +56,7 @@ public final class ModCommands {
                             }))
             );
 
-            // /aiarkadas & /aiarkadas — Control commands
+            // /aiarkadas — Control commands
             dispatcher.register(Commands.literal("aiarkadas")
                     .then(Commands.literal("unut").executes(context -> {
                         ServerPlayer p = context.getSource().getPlayerOrException();
@@ -83,15 +64,21 @@ public final class ModCommands {
                         context.getSource().sendSuccess(() -> Component.literal("§e🤝 [AI Arkadaş]: §fTamam, ne konuşmuşsak sildim. Sıfırdan başlıyoruz!"), false);
                         return 1;
                     }))
-            );
+                    .then(Commands.literal("ai_servisi")
+                            .then(Commands.literal("groq").executes(context -> {
+                                ConfigManager.saveActiveAiProvider("groq");
+                                com.aicaddy.ai.provider.ProviderRouter.reset();
+                                context.getSource().sendSuccess(() -> Component.literal("§e🧠 [AI Servisi]: §aGroq Llama 3.3 70B §faktif edildi."), false);
+                                return 1;
+                            }))
+                            .then(Commands.literal("gemini").executes(context -> {
+                                ConfigManager.saveActiveAiProvider("gemini");
+                                com.aicaddy.ai.provider.ProviderRouter.reset();
+                                context.getSource().sendSuccess(() -> Component.literal("§e🧠 [AI Servisi]: §aGoogle Gemini §faktif edildi."), false);
+                                return 1;
+                            }))
+                    )
 
-            dispatcher.register(Commands.literal("aikedi")
-                    .then(Commands.literal("unut").executes(context -> {
-                        ServerPlayer p = context.getSource().getPlayerOrException();
-                        AiBrainManager.clearHistory(p);
-                        context.getSource().sendSuccess(() -> Component.literal("§e🤝 [AI Arkadaş]: §fTamam, ne konuşmuşsak sildim. Sıfırdan başlıyoruz!"), false);
-                        return 1;
-                    }))
                     .then(Commands.literal("hafiza").executes(context -> {
                         ServerPlayer p = context.getSource().getPlayerOrException();
                         int score = PlayerMemoryStore.getAffinityScore(p.getUUID());

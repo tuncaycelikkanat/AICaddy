@@ -13,6 +13,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.Cat;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -178,6 +179,36 @@ public final class CompanionActionExecutor {
                         "§e⚡ [Yoldaş Eylemi]: §f" + action.target() + " hedefini inceliyorum." + reasonStr
                 ));
             }
+            case "FETCH_ITEM" -> {
+                ItemEntity targetItem = findNearbyItemEntity(player, action.target());
+                if (targetItem != null) {
+                    cat.setOrderedToSit(false);
+                    cat.getNavigation().moveTo(targetItem, 1.45D);
+                    player.sendSystemMessage(Component.literal(
+                            "§e⚡ [Yoldaş Eylemi]: §a" + targetItem.getItem().getHoverName().getString() + " eşyasını sana getiriyorum!" + reasonStr
+                    ));
+                    targetItem.setPos(player.getX(), player.getY(), player.getZ());
+                } else {
+                    player.sendSystemMessage(Component.literal(
+                            "§e⚡ [Yoldaş Eylemi]: §7Etrafta '" + action.target() + "' bulamadım."
+                    ));
+                }
+            }
+            case "DEFEND_PLAYER" -> {
+                LivingEntity monster = findNearbyMonster(player);
+                if (monster != null) {
+                    cat.setOrderedToSit(false);
+                    cat.setTarget(monster);
+                    cat.getNavigation().moveTo(monster, 1.55D);
+                    player.sendSystemMessage(Component.literal(
+                            "§e⚡ [Yoldaş Eylemi]: §c🛡️ Seni " + monster.getDisplayName().getString() + " hedefinden koruyorum!" + reasonStr
+                    ));
+                } else {
+                    player.sendSystemMessage(Component.literal(
+                            "§e⚡ [Yoldaş Eylemi]: §aEtrafta tehdit yok, güvendeyiz."
+                    ));
+                }
+            }
             case "SIT" -> {
                 cat.setOrderedToSit(true);
                 player.sendSystemMessage(Component.literal(
@@ -215,6 +246,23 @@ public final class CompanionActionExecutor {
         for (Entity e : entities) {
             if (e instanceof Monster m && m.isAlive()) {
                 return m;
+            }
+        }
+        return null;
+    }
+
+    private static ItemEntity findNearbyItemEntity(ServerPlayer player, String targetName) {
+        ServerLevel level = player.serverLevel();
+        AABB box = player.getBoundingBox().inflate(15.0);
+        List<Entity> entities = level.getEntities(player, box);
+
+        for (Entity e : entities) {
+            if (e instanceof ItemEntity itemEntity) {
+                String name = itemEntity.getItem().getHoverName().getString().toLowerCase();
+                String targetLower = targetName == null ? "" : targetName.toLowerCase();
+                if (name.contains(targetLower) || itemEntity.getItem().getDescriptionId().toLowerCase().contains(targetLower)) {
+                    return itemEntity;
+                }
             }
         }
         return null;

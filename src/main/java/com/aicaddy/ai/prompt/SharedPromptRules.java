@@ -88,7 +88,7 @@ public final class SharedPromptRules {
 				  "kedi_duygusu": "%s",
 				  "ic_dusunce": "Sahneye özgü somut detay içeren 1 cümlelik yoldaş düşüncesi (SADECE Türkçe)",
 				  "actions": [
-				    { "type": "MOVE_TO | ATTACK_ENTITY | FOLLOW_PLAYER | FLEE_DANGER | LOOK_AT | MINE_BLOCK | SIT", "target": "Varlık veya blok adı", "x": 0, "y": 0, "z": 0, "reason": "Eylemin sebebi" }
+				    { "type": "MOVE_TO | ATTACK_ENTITY | FETCH_ITEM | DEFEND_PLAYER | FOLLOW_PLAYER | FLEE_DANGER | LOOK_AT | MINE_BLOCK | SIT", "target": "Varlık veya blok adı", "x": 0, "y": 0, "z": 0, "reason": "Eylemin sebebi" }
 				  ],
 				  "final_replik": "AI Arkadaş'ın söyleyeceği doğal Türkçe replik — SADECE Türkçe kelime, yabancı kelime/ünlem kesinlikle yasak"
 				}
